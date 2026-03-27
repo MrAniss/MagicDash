@@ -9,12 +9,17 @@ import express from 'express';
 import cors from 'cors';
 import { authRouter, isAuthenticated } from './auth.js';
 import { getRows, getComarketRows, clearCache } from './googleAdsClient.js';
+import { generateRecommendations } from './services/recommendationEngine.js';
 import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
 import { getBudgetForMonth, getPCSBudgetForMonth, clearBudgetCache } from './services/budgetSheetReader.js';
 import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
 import { clearGA4Cache } from './ga4Client.js';
+import { clearMcCache } from './services/merchantCenterClient.js';
 import ga4Router from './routes/ga4.js';
+import competitionRouter from './routes/competition.js';
+import recommendationsRouter from './routes/recommendations.js';
+import shoppingRouter from './routes/shopping.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +30,9 @@ app.use(express.json());
 
 authRouter(app);
 app.use('/api/ga4', ga4Router);
+app.use('/api/competition', competitionRouter);
+app.use('/api/recommendations', recommendationsRouter);
+app.use('/api/shopping', shoppingRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
@@ -35,6 +43,7 @@ app.post('/api/cache/clear', (_req, res) => {
   clearCache();
   clearBudgetCache();
   clearGA4Cache();
+  clearMcCache();
   res.json({ ok: true });
 });
 
@@ -278,12 +287,17 @@ app.get('/api/budget', async (req, res) => {
 
     // Get budgets from Sheet
     let brandBudgets = {};
+    let paraLafBudget = 0;
     if (isPascalCoste) {
       const pcsBudgets = await getPCSBudgetForMonth(month);
       brandBudgets = pcsBudgets[brandLabel] || {};
     } else {
       const budgets = await getBudgetForMonth(month);
       brandBudgets = budgets[brandLabel] || {};
+      // When viewing Cocooncenter, also grab Para Laf budget for the consolidated row
+      if (brandLabel === 'Cocooncenter') {
+        paraLafBudget = budgets['Parapharmacie Lafayette']?.['FR'] || 0;
+      }
     }
 
     // Date range for current month spend
@@ -309,11 +323,21 @@ app.get('/api/budget', async (req, res) => {
     }
 
     // Fetch current + comparison rows in parallel
+    // When Cocooncenter + ALL markets, also fetch Para Laf for full consolidation
     const marketFilter = market !== 'ALL' && market !== 'Autres pays' ? market : undefined;
-    const [currentRows, compRows] = await Promise.all([
+    const isCC = brandLabel === 'Cocooncenter';
+    const includeParaLaf = isCC && market === 'ALL';
+
+    const [currentRows, compRows, paraLafCurrentRows, paraLafCompRows] = await Promise.all([
       getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false }),
       getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo, includeComarket: false }),
+      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: false }) : Promise.resolve([]),
+      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: compFrom, to: compTo, includeComarket: false }) : Promise.resolve([]),
     ]);
+
+    // Merge Para Laf rows into CC rows for consolidated view
+    const allCurrentRows = includeParaLaf ? [...currentRows, ...paraLafCurrentRows] : currentRows;
+    const allCompRows    = includeParaLaf ? [...compRows,    ...paraLafCompRows]    : compRows;
 
     // Aggregate helper for a market filter on rows
     function aggregateForMarket(rows, mkt) {
@@ -328,8 +352,8 @@ app.get('/api/budget', async (req, res) => {
       return aggregateMetrics(filtered);
     }
 
-    const cur = aggregateForMarket(currentRows, market);
-    const comp = aggregateForMarket(compRows, market);
+    const cur  = aggregateForMarket(allCurrentRows, market);
+    const comp = aggregateForMarket(allCompRows,    market);
 
     // Projections
     function buildMetricForecast(toDate, daysEl, daysT, compValue) {
@@ -354,10 +378,11 @@ app.get('/api/budget', async (req, res) => {
     const aovCompare = comp.conversions > 0 ? r2(comp.revenue / comp.conversions) : 0;
     const aovDelta = aovCompare > 0 ? r2(((aovProjBase - aovCompare) / aovCompare) * 100) : 0;
 
-    // Budget pacing (cost)
-    const budgetValue = market === 'Autres pays' ? (brandBudgets['Autres pays'] || 0)
-                      : market !== 'ALL' ? (brandBudgets[market] || 0)
-                      : Object.values(brandBudgets).reduce((s, v) => s + v, 0);
+    // Budget pacing (cost) — include Para Laf budget when CC ALL view
+    const ccBudget = market === 'Autres pays' ? (brandBudgets['Autres pays'] || 0)
+                   : market !== 'ALL' ? (brandBudgets[market] || 0)
+                   : Object.values(brandBudgets).reduce((s, v) => s + v, 0);
+    const budgetValue = (includeParaLaf && market === 'ALL') ? ccBudget + paraLafBudget : ccBudget;
 
     const theoreticalSpend = budgetValue > 0 ? (budgetValue / daysTotal) * daysElapsed : 0;
     const pacingPct = theoreticalSpend > 0 ? r2((cur.spend / theoreticalSpend) * 100) : 0;
@@ -414,6 +439,44 @@ app.get('/api/budget', async (req, res) => {
         });
       }
       marketsTable.sort((a, b) => b.spend_to_date - a.spend_to_date);
+
+      // Inject "France Para Laf" row just after "FR" when viewing Cocooncenter ALL
+      if (isCC && paraLafCurrentRows.length > 0) {
+        const paraSpend = r2(paraLafCurrentRows.reduce((s, r) => s + r.cost, 0));
+        const paraRemaining = paraLafBudget - paraSpend;
+        const paraRemDays = daysTotal - daysElapsed;
+        const paraDailyActual = daysElapsed > 0 ? r2(paraSpend / daysElapsed) : 0;
+        const paraDailyTarget = paraRemaining > 0 && paraRemDays > 0 ? r2(paraRemaining / paraRemDays) : 0;
+        const paraDailyAvg = daysElapsed > 0 ? paraSpend / daysElapsed : 0;
+        const paraProjBase = r2(paraDailyAvg * daysTotal);
+        const paraTheoretical = paraLafBudget > 0 ? (paraLafBudget / daysTotal) * daysElapsed : 0;
+        const paraPacing = paraTheoretical > 0 ? r2((paraSpend / paraTheoretical) * 100) : 0;
+        let paraStatus = 'on_track';
+        if (paraPacing > 105) paraStatus = 'over';
+        else if (paraPacing < 85) paraStatus = 'under';
+
+        const paraRow = {
+          market: 'France Para Laf',
+          budget: paraLafBudget, spend_to_date: paraSpend,
+          pacing_pct: paraPacing,
+          projection_base: paraProjBase,
+          projection_optimistic: r2(paraProjBase * 1.15),
+          projection_pessimistic: r2(paraProjBase * 0.85),
+          status: paraStatus,
+          daily_actual: paraDailyActual,
+          daily_target: paraDailyTarget,
+          daily_delta: r2(paraDailyActual - paraDailyTarget),
+          isGuest: true, // flag: this row belongs to a different brand
+        };
+
+        // Insert after FR row
+        const frIdx = marketsTable.findIndex(m => m.market === 'FR');
+        if (frIdx >= 0) {
+          marketsTable.splice(frIdx + 1, 0, paraRow);
+        } else {
+          marketsTable.unshift(paraRow);
+        }
+      }
     }
 
     res.json({
@@ -463,6 +526,111 @@ app.get('/api/budget', async (req, res) => {
 });
 
 function r2(v) { return Math.round(v * 100) / 100; }
+
+// ─── Budget Recommendations ────────────────────────────
+app.get('/api/budget/recommendations', async (req, res) => {
+  try {
+    const { brand = 'Cocooncenter', month, granularity = 'market' } = req.query;
+    if (!month) return res.status(400).json({ error: 'Missing month' });
+
+    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
+                     : brand === 'COCOONCENTER' ? 'Cocooncenter'
+                     : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
+                     : brand;
+    const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
+                      : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
+                      : 'PASCAL_COSTE';
+
+    // Get pacing data for all markets (needed for budget/projection signals)
+    const isPCS = adsBrandKey === 'PASCAL_COSTE';
+    const budgets = isPCS
+      ? await getPCSBudgetForMonth(month)
+      : await getBudgetForMonth(month);
+    const brandBudgets = (budgets[brandLabel] || {});
+
+    const [year, mon] = month.split('-').map(Number);
+    const firstDay = new Date(year, mon - 1, 1);
+    const lastDay = new Date(year, mon, 0);
+    const today = new Date();
+    const endDate = today < lastDay ? today : lastDay;
+    const from = endDate.toISOString().slice(0, 10);
+    const daysElapsed = Math.floor((endDate - firstDay) / (1000 * 60 * 60 * 24)) + 1;
+    const daysTotal = lastDay.getDate();
+
+    const isCC = adsBrandKey === 'COCOONCENTER';
+    const fromStr = firstDay.toISOString().slice(0, 10);
+
+    const [rows, paraLafRows] = await Promise.all([
+      getRows({ brand: adsBrandKey, from: fromStr, to: from }),
+      isCC ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: fromStr, to: from }) : Promise.resolve([]),
+    ]);
+
+    const spendByMarket = {};
+    for (const r of rows) { spendByMarket[r.market] = (spendByMarket[r.market] || 0) + r.cost; }
+
+    // Build pacing market entries (same logic as /api/budget)
+    const allMarkets = Object.keys({ ...brandBudgets, ...spendByMarket });
+    const pacingMarkets = [];
+    for (const mkt of allMarkets) {
+      const mktBudget = brandBudgets[mkt] || 0;
+      const mktSpend = r2(spendByMarket[mkt] || 0);
+      if (mktBudget === 0 && mktSpend === 0) continue;
+      const dailyAvg = daysElapsed > 0 ? mktSpend / daysElapsed : 0;
+      const projBase = r2(dailyAvg * daysTotal);
+      const theoretical = mktBudget > 0 ? (mktBudget / daysTotal) * daysElapsed : 0;
+      const pacingPct = theoretical > 0 ? r2((mktSpend / theoretical) * 100) : 100;
+      const remaining = mktBudget - mktSpend;
+      const remDays = daysTotal - daysElapsed;
+      pacingMarkets.push({
+        market: mkt,
+        budget: mktBudget,
+        spend_to_date: mktSpend,
+        pacing_pct: pacingPct,
+        projection_base: projBase,
+        daily_actual: daysElapsed > 0 ? r2(mktSpend / daysElapsed) : 0,
+        daily_target: remaining > 0 && remDays > 0 ? r2(remaining / remDays) : 0,
+      });
+    }
+
+    // When Cocooncenter, also add Para Laf as a "guest" market for recommendations
+    if (isCC && paraLafRows.length > 0) {
+      const allBudgets = await getBudgetForMonth(month);
+      const paraLafBudgetRec = allBudgets['Parapharmacie Lafayette']?.['FR'] || 0;
+      const paraSpend = r2(paraLafRows.reduce((s, r) => s + r.cost, 0));
+      const paraDailyAvg = daysElapsed > 0 ? paraSpend / daysElapsed : 0;
+      const paraProjBase = r2(paraDailyAvg * daysTotal);
+      const paraTheoretical = paraLafBudgetRec > 0 ? (paraLafBudgetRec / daysTotal) * daysElapsed : 0;
+      const paraPacingPct = paraTheoretical > 0 ? r2((paraSpend / paraTheoretical) * 100) : 100;
+      const paraRemaining = paraLafBudgetRec - paraSpend;
+      const paraRemDays = daysTotal - daysElapsed;
+      pacingMarkets.push({
+        market: 'France Para Laf',
+        adsMarket: 'FR',
+        adsBrand: 'PARAPHARMACIE_LAFAYETTE',
+        budget: paraLafBudgetRec,
+        spend_to_date: paraSpend,
+        pacing_pct: paraPacingPct,
+        projection_base: paraProjBase,
+        daily_actual: daysElapsed > 0 ? r2(paraSpend / daysElapsed) : 0,
+        daily_target: paraRemaining > 0 && paraRemDays > 0 ? r2(paraRemaining / paraRemDays) : 0,
+      });
+    }
+
+    const recommendations = await generateRecommendations({
+      brand: adsBrandKey,
+      month,
+      granularity,
+      pacingMarkets,
+      daysElapsed,
+      daysTotal,
+    });
+
+    res.json(recommendations);
+  } catch (err) {
+    console.error('Recommendations error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── Comarket ──────────────────────────────────────────
 app.get('/api/comarket', async (req, res) => {

@@ -6,12 +6,10 @@ import { MarketLabel, marketName } from '../utils/flags';
 
 const BRAND_OPTIONS = [
   { key: 'Cocooncenter', label: 'Cocooncenter' },
-  { key: 'Parapharmacie Lafayette', label: 'Parapharmacie Lafayette' },
   { key: 'Pascal Coste Shopping', label: 'Pascal Coste Shopping' },
 ];
 
 const CC_MARKETS = ['ALL','FR','UK','DE','ES','BE','IT','PL','US','AU','CA','SA','Autres pays'];
-const PARA_MARKETS = ['ALL','FR'];
 const PCS_MARKETS = ['ALL','FR'];
 
 const COMPARE_OPTIONS = [
@@ -21,7 +19,6 @@ const COMPARE_OPTIONS = [
 
 function getMarketsForBrand(brand) {
   if (brand === 'Cocooncenter') return CC_MARKETS;
-  if (brand === 'Parapharmacie Lafayette') return PARA_MARKETS;
   return PCS_MARKETS;
 }
 
@@ -380,8 +377,17 @@ export default function BudgetPacing({ filters }) {
               </thead>
               <tbody>
                 {markets.map((m, i) => (
-                  <tr key={m.market} className={`border-b border-border hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''}`}>
-                    <td className="px-4 py-3 text-navy font-medium group-hover:text-white"><MarketLabel market={m.market} showFullName /></td>
+                  <tr key={m.market} className={`border-b border-border hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''} ${m.isGuest ? 'bg-[#F0F4FF]' : ''}`}>
+                    <td className="px-4 py-3 text-navy font-medium group-hover:text-white">
+                      {m.market === 'France Para Laf' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <img src="https://flagcdn.com/w40/fr.png" srcSet="https://flagcdn.com/w80/fr.png 2x" width={16} height={12} alt="FR" style={{ display: 'inline-block', verticalAlign: 'middle', borderRadius: 2 }} />
+                          <span>France Para Laf</span>
+                        </span>
+                      ) : (
+                        <MarketLabel market={m.market} showFullName />
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-navy group-hover:text-white">{m.budget > 0 ? fEur(m.budget) : '\u2014'}</td>
                     <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEur(m.spend_to_date)}</td>
                     <td className={`px-4 py-3 text-right font-semibold group-hover:text-white ${m.budget > 0 ? (m.pacing_pct > 105 ? 'text-danger' : m.pacing_pct < 85 ? 'text-warning' : 'text-success') : 'text-navy-muted'}`}>
@@ -400,6 +406,7 @@ export default function BudgetPacing({ filters }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }

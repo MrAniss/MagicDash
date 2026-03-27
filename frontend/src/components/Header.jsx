@@ -12,11 +12,14 @@ const BRAND_TABS = [
 ];
 
 const VIEW_TABS = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'analytics', label: 'Analytics' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'campaigns', label: 'Campagnes' },
-  { key: 'comarket', label: 'Comarket' },
+  { key: 'dashboard',       label: 'Dashboard' },
+  { key: 'analytics',       label: 'Analytics' },
+  { key: 'budget',          label: 'Budget' },
+  { key: 'campaigns',       label: 'Campagnes' },
+  { key: 'comarket',        label: 'Comarket' },
+  { key: 'competition',     label: 'Concurrence' },
+  { key: 'recommendations', label: 'Recommandations' },
+  { key: 'shopping',        label: 'Shopping' },
 ];
 
 const PRESETS = [
@@ -33,7 +36,7 @@ const COMPARE_OPTIONS = [
   { key: 'previous_year', label: 'N-1' },
 ];
 
-export default function Header({ filters, onFiltersChange, activeView, onViewChange }) {
+export default function Header({ filters, onFiltersChange, activeView, onViewChange, recsBadge = 0 }) {
   const { data: authData } = useAuthStatus();
   const authenticated = authData?.authenticated;
   const { includeComarket, setIncludeComarket } = useComarket();
@@ -74,7 +77,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     <header className="sticky top-0 z-50 bg-white border-b border-border-strong shadow-header">
       <div className="max-w-[1600px] mx-auto px-6 py-3">
         {/* Top row */}
-        <div className={`flex items-center justify-between ${activeView !== 'budget' ? 'mb-3' : ''}`}>
+        <div className={`flex items-center justify-between ${!['budget','competition','recommendations','shopping'].includes(activeView) ? 'mb-3' : ''}`}>
           <div className="flex items-center gap-3">
             <img
               src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
@@ -89,8 +92,13 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
             <div className="flex gap-1">
               {VIEW_TABS.map(view => (
                 <button key={view.key} onClick={() => onViewChange(view.key)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${activeView === view.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
+                  className={`relative px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${activeView === view.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
                   {view.label}
+                  {view.key === 'recommendations' && recsBadge > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                      {recsBadge}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -107,8 +115,8 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
           </div>
         </div>
 
-        {/* Bottom row — hidden on Budget view */}
-        {activeView !== 'budget' && (
+        {/* Bottom row — hidden on views with own controls */}
+        {!['budget','competition','recommendations','shopping'].includes(activeView) && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
             <div className="flex gap-1">
@@ -181,7 +189,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         )}
 
         {/* Comarket warning banner */}
-        {activeView !== 'budget' && includeComarket && (
+        {!['budget','competition','recommendations','shopping'].includes(activeView) && includeComarket && (
           <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
             <span>&#9888;</span>
             <span><strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees par les partenaires.</span>
