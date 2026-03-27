@@ -1,0 +1,15 @@
+{
+  "name": "sea-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev:all": "concurrently \"npm run dev:back\" \"npm run dev:front\"",
+    "dev:back": "npm run dev --workspace=backend",
+    "dev:front": "npm run dev --workspace=frontend",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
