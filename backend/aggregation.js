@@ -16,6 +16,7 @@ export function aggregateMetrics(rows) {
   const cvr = clicks > 0 ? (conversions / clicks) * 100 : 0;
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
   const aov = conversions > 0 ? revenue / conversions : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
 
   return {
     spend: Math.round(spend * 100) / 100,
@@ -27,6 +28,7 @@ export function aggregateMetrics(rows) {
     impressions,
     ctr: Math.round(ctr * 100) / 100,
     aov: Math.round(aov * 100) / 100,
+    cpc: Math.round(cpc * 100) / 100,
   };
 }
 

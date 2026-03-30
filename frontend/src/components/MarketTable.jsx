@@ -14,20 +14,27 @@ function Skeleton() {
 }
 
 const COLUMNS = [
-  { key: 'label', label: 'MARCHE', align: 'left' },
-  { key: 'spend', label: 'SPEND', format: fEur, align: 'right' },
-  { key: 'revenue', label: 'REVENUE', format: fEur, align: 'right' },
-  { key: 'roas', label: 'ROAS', format: fROAS, align: 'right', colorCode: true },
-  { key: 'conversions', label: 'CONV.', format: fNum, align: 'right' },
-  { key: 'cvr', label: 'CVR', format: fPct, align: 'right' },
-  { key: 'aov', label: 'PANIER MOY.', format: fAov, align: 'right' },
-  { key: 'clicks', label: 'CLICS', format: fNum, align: 'right' },
-  { key: 'ctr', label: 'CTR', format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', align: 'right' },
-  { key: 'delta_roas', label: '\u0394 ROAS', format: v => fDelta(v, 'abs'), align: 'right', isDelta: true },
-  { key: 'delta_aov', label: '\u0394 AOV', format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', align: 'right', isDelta: true },
-  { key: 'delta_spend', label: '\u0394 SPEND', format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
-  { key: 'delta_clicks', label: '\u0394 CLICS', format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
-  { key: 'delta_ctr', label: '\u0394 CTR', format: v => fDelta(v, 'abs'), align: 'right', isDelta: true },
+  { key: 'label',            label: 'MARCHE',       align: 'left' },
+  // ── Trafic ──
+  { key: 'impressions',      label: 'IMPR.',         format: fNum,  align: 'right' },
+  { key: 'clicks',           label: 'CLICS',         format: fNum,  align: 'right' },
+  { key: 'cpc',             label: 'CPC',           format: v => fEur(v, true), align: 'right' },
+  { key: 'ctr',              label: 'CTR',           format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', align: 'right' },
+  { key: 'cvr',              label: 'CVR',           format: fPct,  align: 'right' },
+  // ── Business ──
+  { key: 'spend',            label: 'SPEND',         format: fEur,  align: 'right' },
+  { key: 'revenue',          label: 'REVENUE',       format: fEur,  align: 'right' },
+  { key: 'roas',             label: 'ROAS',          format: fROAS, align: 'right', colorCode: true },
+  { key: 'conversions',      label: 'CONV.',         format: fNum,  align: 'right' },
+  { key: 'aov',              label: 'PANIER MOY.',   format: fAov,  align: 'right' },
+  // ── Deltas ──
+  { key: 'delta_impressions',label: '\u0394 IMPR.',  format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
+  { key: 'delta_spend',      label: '\u0394 SPEND',  format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
+  { key: 'delta_clicks',     label: '\u0394 CLICS',  format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
+  { key: 'delta_cpc',        label: '\u0394 CPC',    format: v => fDelta(v, 'pct'), align: 'right', isDelta: true },
+  { key: 'delta_ctr',        label: '\u0394 CTR',    format: v => fDelta(v, 'abs'), align: 'right', isDelta: true },
+  { key: 'delta_roas',       label: '\u0394 ROAS',   format: v => fDelta(v, 'abs'), align: 'right', isDelta: true },
+  { key: 'delta_aov',        label: '\u0394 AOV',    format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', align: 'right', isDelta: true },
 ];
 
 function roasColor(roas) {

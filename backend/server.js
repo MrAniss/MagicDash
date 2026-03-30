@@ -73,6 +73,7 @@ app.get('/api/kpis', async (req, res) => {
       impressions_pct: pctChange(current.impressions, previous.impressions),
       ctr_pct: pctChange(current.ctr, previous.ctr),
       aov_pct: pctChange(current.aov, previous.aov),
+      cpc_pct: pctChange(current.cpc, previous.cpc),
     };
 
     res.json({ current, previous, deltas });
@@ -143,9 +144,11 @@ app.get('/api/markets', async (req, res) => {
         impressions: cur.impressions,
         ctr: cur.ctr,
         aov: cur.aov,
+        delta_impressions: pctChange(cur.impressions, prev.impressions),
         delta_roas: pctChange(cur.roas, prev.roas),
         delta_spend: pctChange(cur.spend, prev.spend),
         delta_clicks: pctChange(cur.clicks, prev.clicks),
+        delta_cpc: pctChange(cur.cpc, prev.cpc),
         delta_ctr: pctChange(cur.ctr, prev.ctr),
         delta_aov: pctChange(cur.aov, prev.aov),
       });
@@ -237,9 +240,19 @@ app.get('/api/granularity', async (req, res) => {
 
     // Build a map of previous period data by index
     const result = currentSeries.map((item, i) => {
-      const prev = prevSeries[i] || { spend: 0, revenue: 0, roas: 0, conversions: 0, cvr: 0, clicks: 0, ctr: 0, aov: 0 };
+      const prev = prevSeries[i] || { spend: 0, revenue: 0, roas: 0, conversions: 0, cvr: 0, clicks: 0, impressions: 0, ctr: 0, aov: 0 };
       return {
         period: item.date,
+        impressions: item.impressions,
+        delta_impressions: pctChange(item.impressions, prev.impressions),
+        clicks: item.clicks,
+        delta_clicks: pctChange(item.clicks, prev.clicks),
+        cpc: item.cpc,
+        delta_cpc: pctChange(item.cpc, prev.cpc),
+        ctr: item.ctr,
+        delta_ctr: pctChange(item.ctr, prev.ctr),
+        cvr: item.cvr,
+        delta_cvr: pctChange(item.cvr, prev.cvr),
         spend: item.spend,
         delta_spend: pctChange(item.spend, prev.spend),
         revenue: item.revenue,
@@ -248,12 +261,6 @@ app.get('/api/granularity', async (req, res) => {
         delta_roas: pctChange(item.roas, prev.roas),
         conversions: item.conversions,
         delta_conversions: pctChange(item.conversions, prev.conversions),
-        cvr: item.cvr,
-        delta_cvr: pctChange(item.cvr, prev.cvr),
-        clicks: item.clicks,
-        delta_clicks: pctChange(item.clicks, prev.clicks),
-        ctr: item.ctr,
-        delta_ctr: pctChange(item.ctr, prev.ctr),
         aov: item.aov,
         delta_aov: pctChange(item.aov, prev.aov),
       };

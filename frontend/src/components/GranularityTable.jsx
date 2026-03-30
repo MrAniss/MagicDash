@@ -60,23 +60,29 @@ export default function GranularityTable({ filters }) {
   }
 
   const COLS = [
-    { key: 'period', label: 'PERIODE', align: 'left', format: v => v },
-    { key: 'spend', label: 'SPEND', format: fEur },
-    { key: 'delta_spend', label: '\u0394', format: v => fDelta(v, 'pct'), isDelta: true },
-    { key: 'revenue', label: 'REVENUE', format: fEur },
-    { key: 'delta_revenue', label: '\u0394', format: v => fDelta(v, 'pct'), isDelta: true },
-    { key: 'roas', label: 'ROAS', format: fROAS },
-    { key: 'delta_roas', label: '\u0394', format: v => fDelta(v, 'abs'), isDelta: true },
-    { key: 'conversions', label: 'CONV.', format: fNum },
-    { key: 'delta_conversions', label: '\u0394', format: v => fDelta(v, 'pct'), isDelta: true },
-    { key: 'cvr', label: 'CVR', format: fPct },
-    { key: 'delta_cvr', label: '\u0394', format: v => fDelta(v, 'abs'), isDelta: true },
-    { key: 'aov', label: 'AOV', format: fAov },
-    { key: 'delta_aov', label: '\u0394', format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', isDelta: true },
-    { key: 'clicks', label: 'CLICS', format: fNum },
-    { key: 'delta_clicks', label: '\u0394', format: v => fDelta(v, 'pct'), isDelta: true },
-    { key: 'ctr', label: 'CTR', format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014' },
-    { key: 'delta_ctr', label: '\u0394', format: v => fDelta(v, 'abs'), isDelta: true },
+    { key: 'period',             label: 'PERIODE',  align: 'left', format: v => v },
+    // ── Trafic ──
+    { key: 'impressions',        label: 'IMPR.',    format: fNum },
+    { key: 'delta_impressions',  label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'clicks',             label: 'CLICS',    format: fNum },
+    { key: 'delta_clicks',       label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'cpc',                label: 'CPC',      format: v => fEur(v, true) },
+    { key: 'delta_cpc',          label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'ctr',                label: 'CTR',      format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014' },
+    { key: 'delta_ctr',          label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true },
+    { key: 'cvr',                label: 'CVR',      format: fPct },
+    { key: 'delta_cvr',          label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true },
+    // ── Business ──
+    { key: 'spend',              label: 'SPEND',    format: fEur },
+    { key: 'delta_spend',        label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'revenue',            label: 'REVENUE',  format: fEur },
+    { key: 'delta_revenue',      label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'roas',               label: 'ROAS',     format: fROAS },
+    { key: 'delta_roas',         label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true },
+    { key: 'conversions',        label: 'CONV.',    format: fNum },
+    { key: 'delta_conversions',  label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true },
+    { key: 'aov',                label: 'AOV',      format: fAov },
+    { key: 'delta_aov',          label: '\u0394',   format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', isDelta: true },
   ];
 
   return (
