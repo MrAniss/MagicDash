@@ -763,6 +763,86 @@ function fmtDate(d) {
   return d.toISOString().slice(0, 10);
 }
 
+// ─── Budget Daily Spend YTD ────────────────────────────
+const dailySpendCache = new Map();
+const DAILY_CACHE_TTL = 60 * 60 * 1000; // 1h
+
+app.get('/api/budget/daily-spend', async (req, res) => {
+  try {
+    const { brand = 'Cocooncenter', market = 'ALL', year } = req.query;
+    const targetYear = parseInt(year || new Date().getFullYear(), 10);
+    const cacheKey = `daily-spend|${brand}|${market}|${targetYear}`;
+
+    const cached = dailySpendCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < DAILY_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const today = new Date();
+    const from = `${targetYear}-01-01`;
+    const to = today.getFullYear() === targetYear ? fmtDate(today) : `${targetYear}-12-31`;
+
+    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
+                     : brand === 'COCOONCENTER'            ? 'Cocooncenter'
+                     : brand === 'PASCAL_COSTE'            ? 'Pascal Coste Shopping'
+                     : brand;
+    const adsBrandKey = brandLabel === 'Cocooncenter'            ? 'COCOONCENTER'
+                      : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
+                      : 'PASCAL_COSTE';
+    const isPCS = adsBrandKey === 'PASCAL_COSTE';
+
+    const marketFilter = (market && market !== 'ALL') ? market : undefined;
+
+    const rows = await getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false });
+
+    // Group spend by date + market
+    const spendMap = {};
+    for (const row of rows) {
+      const key = `${row.date}|${row.market}`;
+      spendMap[key] = (spendMap[key] || 0) + row.cost;
+    }
+
+    // Fetch monthly budgets in parallel for each month in range
+    const endMonth = today.getFullYear() === targetYear ? today.getMonth() + 1 : 12;
+    const months = Array.from({ length: endMonth }, (_, i) =>
+      `${targetYear}-${String(i + 1).padStart(2, '0')}`
+    );
+    const budgetsByMonth = {};
+    await Promise.all(months.map(async m => {
+      const budgets = isPCS ? await getPCSBudgetForMonth(m) : await getBudgetForMonth(m);
+      budgetsByMonth[m] = budgets[brandLabel] || {};
+    }));
+
+    // Build result array
+    const result = [];
+    const dates = [...new Set(Object.keys(spendMap).map(k => k.split('|')[0]))].sort();
+
+    for (const date of dates) {
+      const monthKey = date.slice(0, 7);
+      const daysInMonth = new Date(parseInt(date.slice(0, 4)), parseInt(date.slice(5, 7)), 0).getDate();
+      const monthBudgets = budgetsByMonth[monthKey] || {};
+
+      const marketsOnDate = new Set(
+        Object.keys(spendMap).filter(k => k.startsWith(date + '|')).map(k => k.split('|')[1])
+      );
+
+      for (const mkt of marketsOnDate) {
+        const spend = r2(spendMap[`${date}|${mkt}`] || 0);
+        const mktBudget = monthBudgets[mkt] || 0;
+        const dailyTarget = mktBudget > 0 ? r2(mktBudget / daysInMonth) : 0;
+        result.push({ date, market: mkt, brand: brandLabel, spend, budget_daily_target: dailyTarget });
+      }
+    }
+
+    dailySpendCache.set(cacheKey, { data: result, ts: Date.now() });
+    res.json(result);
+  } catch (err) {
+    console.error('Daily spend error:', err);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }));
 
 app.listen(PORT, () => {
