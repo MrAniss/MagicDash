@@ -17,10 +17,10 @@ const VIEW_TABS = [
   { key: 'budget',          label: 'Budget' },
   { key: 'campaigns',       label: 'Campagnes' },
   { key: 'comarket',        label: 'Comarket' },
-  { key: 'competition',     label: 'Concurrence' },
+  // { key: 'competition',  label: 'Concurrence' },   // hidden — en attente
   { key: 'recommendations', label: 'Recommandations' },
   { key: 'shopping',        label: 'Shopping' },
-  { key: 'assistant',       label: 'Assistant' },
+  // { key: 'assistant',    label: 'Assistant' },      // hidden — quota Gemini API
 ];
 
 const PRESETS = [
