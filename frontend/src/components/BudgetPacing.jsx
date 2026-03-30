@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getCurrentMonth } from '../utils/dateHelpers';
 import { fEur, fNum, fROAS, fAov, fDelta } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
+import BudgetDailyChart from './BudgetDailyChart';
 
 const BRAND_OPTIONS = [
   { key: 'Cocooncenter', label: 'Cocooncenter' },
@@ -367,6 +368,9 @@ export default function BudgetPacing({ filters }) {
           </div>
         </div>
       )}
+
+      {/* Daily spend chart */}
+      <BudgetDailyChart />
 
       {/* Per-market table */}
       {markets.length > 0 && (

@@ -791,14 +791,29 @@ app.get('/api/budget/daily-spend', async (req, res) => {
                       : 'PASCAL_COSTE';
     const isPCS = adsBrandKey === 'PASCAL_COSTE';
 
-    const marketFilter = (market && market !== 'ALL') ? market : undefined;
+    const isCC = adsBrandKey === 'COCOONCENTER';
+    const isParaLafMarket = market === 'France Para Laf';
+    const marketFilter = (market && market !== 'ALL' && !isParaLafMarket) ? market : undefined;
 
-    const rows = await getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false });
+    // Fetch CC rows + Para Laf rows in parallel when CC brand
+    const [rows, paraLafRows] = await Promise.all([
+      isParaLafMarket
+        ? Promise.resolve([])
+        : getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false }),
+      (isCC && (market === 'ALL' || isParaLafMarket))
+        ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: false })
+        : Promise.resolve([]),
+    ]);
 
     // Group spend by date + market
     const spendMap = {};
     for (const row of rows) {
       const key = `${row.date}|${row.market}`;
+      spendMap[key] = (spendMap[key] || 0) + row.cost;
+    }
+    // Inject Para Laf as virtual market "France Para Laf"
+    for (const row of paraLafRows) {
+      const key = `${row.date}|France Para Laf`;
       spendMap[key] = (spendMap[key] || 0) + row.cost;
     }
 
@@ -808,9 +823,11 @@ app.get('/api/budget/daily-spend', async (req, res) => {
       `${targetYear}-${String(i + 1).padStart(2, '0')}`
     );
     const budgetsByMonth = {};
+    const paraLafBudgetsByMonth = {};
     await Promise.all(months.map(async m => {
       const budgets = isPCS ? await getPCSBudgetForMonth(m) : await getBudgetForMonth(m);
       budgetsByMonth[m] = budgets[brandLabel] || {};
+      if (isCC) paraLafBudgetsByMonth[m] = budgets['Parapharmacie Lafayette'] || {};
     }));
 
     // Build result array
@@ -821,6 +838,7 @@ app.get('/api/budget/daily-spend', async (req, res) => {
       const monthKey = date.slice(0, 7);
       const daysInMonth = new Date(parseInt(date.slice(0, 4)), parseInt(date.slice(5, 7)), 0).getDate();
       const monthBudgets = budgetsByMonth[monthKey] || {};
+      const paraLafMonthBudgets = paraLafBudgetsByMonth[monthKey] || {};
 
       const marketsOnDate = new Set(
         Object.keys(spendMap).filter(k => k.startsWith(date + '|')).map(k => k.split('|')[1])
@@ -828,7 +846,12 @@ app.get('/api/budget/daily-spend', async (req, res) => {
 
       for (const mkt of marketsOnDate) {
         const spend = r2(spendMap[`${date}|${mkt}`] || 0);
-        const mktBudget = monthBudgets[mkt] || 0;
+        let mktBudget = 0;
+        if (mkt === 'France Para Laf') {
+          mktBudget = paraLafMonthBudgets['FR'] || 0;
+        } else {
+          mktBudget = monthBudgets[mkt] || 0;
+        }
         const dailyTarget = mktBudget > 0 ? r2(mktBudget / daysInMonth) : 0;
         result.push({ date, market: mkt, brand: brandLabel, spend, budget_daily_target: dailyTarget });
       }

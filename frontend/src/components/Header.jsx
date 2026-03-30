@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStatus } from '../hooks/useAdsData';
 import { useComarket } from '../contexts/ComarketContext';
 import { getPresetRange } from '../utils/dateHelpers';
+import { FlagIcon, marketName } from '../utils/flags';
 
 const BRAND_TABS = [
   { key: 'ALL', label: 'All Brands' },
@@ -10,6 +11,17 @@ const BRAND_TABS = [
   { key: 'PASCAL_COSTE', label: 'Pascal Coste' },
   { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Para. Lafayette' },
 ];
+
+const MARKETS_BY_BRAND = {
+  ALL:                    ['ALL','FR','BE','NL','DE','IT','ES','UK','AT','PT','LU','SE','NO','FI','PL','IE','RO','SA','CA','AU','US'],
+  COCOONCENTER:           ['ALL','FR','BE','NL','DE','IT','ES','UK','AT','PT','LU','SE','NO','FI','PL','IE','RO','SA','CA','AU','US'],
+  PASCAL_COSTE:           ['ALL','FR'],
+  PARAPHARMACIE_LAFAYETTE:['ALL','FR'],
+};
+
+function getAvailableMarkets(brand) {
+  return MARKETS_BY_BRAND[brand] || MARKETS_BY_BRAND.ALL;
+}
 
 const VIEW_TABS = [
   { key: 'dashboard',       label: 'Dashboard' },
@@ -37,6 +49,67 @@ const COMPARE_OPTIONS = [
   { key: 'previous_year', label: 'N-1' },
 ];
 
+function MarketDropdown({ value, onChange, markets }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = value || 'ALL';
+
+  return (
+    <div ref={ref} className="relative ml-1">
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 bg-bg-page border border-border rounded-inner px-2.5 py-1 text-xs text-navy font-medium hover:border-navy-muted outline-none transition-colors"
+      >
+        {selected === 'ALL' ? (
+          <span className="text-navy-muted">🌍</span>
+        ) : (
+          <FlagIcon market={selected} size={14} />
+        )}
+        <span>{selected === 'ALL' ? 'Tous les marchés' : marketName(selected)}</span>
+        <svg className={`w-3 h-3 text-navy-muted transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown list */}
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-border rounded-card shadow-card py-1 min-w-[170px] max-h-72 overflow-y-auto">
+          {markets.map(m => (
+            <button
+              key={m}
+              onClick={() => { onChange(m); setOpen(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-bg-page ${selected === m ? 'font-semibold text-navy bg-bg-page' : 'text-navy-muted'}`}
+            >
+              {m === 'ALL' ? (
+                <span className="text-base leading-none">🌍</span>
+              ) : (
+                <FlagIcon market={m} size={14} />
+              )}
+              <span>{m === 'ALL' ? 'Tous les marchés' : marketName(m)}</span>
+              {selected === m && (
+                <svg className="w-3 h-3 text-navy ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Header({ filters, onFiltersChange, activeView, onViewChange, recsBadge = 0 }) {
   const { data: authData } = useAuthStatus();
   const authenticated = authData?.authenticated;
@@ -45,7 +118,11 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
   const [refreshState, setRefreshState] = useState('idle'); // idle | loading | success
 
   function handleBrand(brand) {
-    onFiltersChange({ ...filters, brand });
+    onFiltersChange({ ...filters, brand, market: 'ALL' });
+  }
+
+  function handleMarket(market) {
+    onFiltersChange({ ...filters, market });
   }
 
   function handlePreset(preset) {
@@ -120,13 +197,22 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         {!['budget','competition','recommendations','shopping','assistant'].includes(activeView) && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
-            <div className="flex gap-1">
-              {BRAND_TABS.map(tab => (
-                <button key={tab.key} onClick={() => handleBrand(tab.key)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${filters.brand === tab.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
-                  {tab.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                {BRAND_TABS.map(tab => (
+                  <button key={tab.key} onClick={() => handleBrand(tab.key)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${filters.brand === tab.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Market selector */}
+              <MarketDropdown
+                value={filters.market || 'ALL'}
+                onChange={handleMarket}
+                markets={getAvailableMarkets(filters.brand)}
+              />
             </div>
 
             {/* Date controls */}
