@@ -20,6 +20,7 @@ import ga4Router from './routes/ga4.js';
 import competitionRouter from './routes/competition.js';
 import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
+import assistantRouter from './routes/assistant.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,7 @@ app.use('/api/ga4', ga4Router);
 app.use('/api/competition', competitionRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
+app.use('/api/assistant', assistantRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,

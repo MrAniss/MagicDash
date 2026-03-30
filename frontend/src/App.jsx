@@ -12,6 +12,7 @@ import GA4View from './components/GA4View';
 import CompetitionView from './components/CompetitionView';
 import RecommendationsView from './components/RecommendationsView';
 import ShoppingView from './components/ShoppingView';
+import AssistantView from './components/AssistantView';
 import { useKpis, useMarkets, useDemoMode, useRecommendationsSummary } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
@@ -102,6 +103,10 @@ export default function App() {
 
         {activeView === 'shopping' && (
           <ShoppingView />
+        )}
+
+        {activeView === 'assistant' && (
+          <AssistantView />
         )}
       </main>
 

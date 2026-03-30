@@ -235,6 +235,19 @@ export default function BudgetPacing({ filters }) {
             <div className="bg-white rounded-card p-6 border border-border shadow-card flex flex-col items-center">
               <h3 className="text-lg font-semibold text-navy mb-5">Consommation budget</h3>
               <GaugeCircle pct={cost.pacing_pct} />
+              <div className="mt-5 w-full border-t border-border pt-4 flex items-center justify-between">
+                <div className="text-center flex-1">
+                  <p className="text-[10px] uppercase text-navy-muted font-medium tracking-[0.06em] mb-1">% Consomme</p>
+                  <p className="text-xl font-bold text-navy">{((cost.to_date / budget) * 100).toFixed(1)}%</p>
+                  <p className="text-[10px] text-navy-muted mt-0.5">{fEur(cost.to_date)} / {fEur(budget)}</p>
+                </div>
+                <div className="w-px h-12 bg-border mx-2" />
+                <div className="text-center flex-1">
+                  <p className="text-[10px] uppercase text-navy-muted font-medium tracking-[0.06em] mb-1">Pacing</p>
+                  <p className="text-xl font-bold text-navy">{cost.pacing_pct.toFixed(1)}%</p>
+                  <p className="text-[10px] text-navy-muted mt-0.5">vs theorique</p>
+                </div>
+              </div>
             </div>
             <div className="bg-white rounded-card p-6 border border-border shadow-card">
               <h3 className="text-lg font-semibold text-navy mb-5">Projections cost fin de mois</h3>

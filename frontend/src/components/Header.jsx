@@ -20,6 +20,7 @@ const VIEW_TABS = [
   { key: 'competition',     label: 'Concurrence' },
   { key: 'recommendations', label: 'Recommandations' },
   { key: 'shopping',        label: 'Shopping' },
+  { key: 'assistant',       label: 'Assistant' },
 ];
 
 const PRESETS = [
@@ -77,7 +78,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     <header className="sticky top-0 z-50 bg-white border-b border-border-strong shadow-header">
       <div className="max-w-[1600px] mx-auto px-6 py-3">
         {/* Top row */}
-        <div className={`flex items-center justify-between ${!['budget','competition','recommendations','shopping'].includes(activeView) ? 'mb-3' : ''}`}>
+        <div className={`flex items-center justify-between ${!['budget','competition','recommendations','shopping','assistant'].includes(activeView) ? 'mb-3' : ''}`}>
           <div className="flex items-center gap-3">
             <img
               src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
@@ -116,7 +117,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         </div>
 
         {/* Bottom row — hidden on views with own controls */}
-        {!['budget','competition','recommendations','shopping'].includes(activeView) && (
+        {!['budget','competition','recommendations','shopping','assistant'].includes(activeView) && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
             <div className="flex gap-1">
@@ -189,7 +190,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         )}
 
         {/* Comarket warning banner */}
-        {!['budget','competition','recommendations','shopping'].includes(activeView) && includeComarket && (
+        {!['budget','competition','recommendations','shopping','assistant'].includes(activeView) && includeComarket && (
           <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
             <span>&#9888;</span>
             <span><strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees par les partenaires.</span>
