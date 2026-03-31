@@ -96,20 +96,20 @@ export default function GranularityTable({ filters }) {
     { key: 'cpc',                label: 'CPC',      format: v => fEur(v, true) },
     { key: 'delta_cpc',          label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, invert: true, isPct: true },
     { key: 'ctr',                label: 'CTR',      format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', isPct: true },
-    { key: 'delta_ctr',          label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true, isPct: true },
+    { key: 'delta_ctr',          label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     { key: 'cvr',                label: 'CVR',      format: fPct, isPct: true },
-    { key: 'delta_cvr',          label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true, isPct: true },
+    { key: 'delta_cvr',          label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     // ── Business ──
     { key: 'spend',              label: 'SPEND',    format: fEur },
     { key: 'delta_spend',        label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     { key: 'revenue',            label: 'REVENUE',  format: fEur },
     { key: 'delta_revenue',      label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     { key: 'roas',               label: 'ROAS',     format: fROAS },
-    { key: 'delta_roas',         label: '\u0394',   format: v => fDelta(v, 'abs'), isDelta: true, isPct: true },
+    { key: 'delta_roas',         label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     { key: 'conversions',        label: 'CONV.',    format: fNum },
     { key: 'delta_conversions',  label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
     { key: 'aov',                label: 'AOV',      format: fAov },
-    { key: 'delta_aov',          label: '\u0394',   format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', isDelta: true },
+    { key: 'delta_aov',          label: '\u0394',   format: v => fDelta(v, 'pct'), isDelta: true, isPct: true },
   ];
 
   return (

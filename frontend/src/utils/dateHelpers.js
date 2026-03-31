@@ -33,6 +33,11 @@ export function getPresetRange(preset) {
   switch (preset) {
     case 'yesterday':
       return { from: fmt(subDays(today, 1)), to: fmt(subDays(today, 1)) };
+    case 'last_month': {
+      const firstOfThisMonth = startOfMonth(today);
+      const lastMonth = subDays(firstOfThisMonth, 1);
+      return { from: fmt(startOfMonth(lastMonth)), to: fmt(lastMonth) };
+    }
     case 'last_week':
       return getLastCompleteWeek();
     case '7d':

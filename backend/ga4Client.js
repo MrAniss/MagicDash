@@ -10,6 +10,28 @@ export function clearGA4Cache() {
   cache.clear();
 }
 
+export function getGA4Streams() {
+  return GA4_STREAMS;
+}
+
+export async function getGA4Hostnames({ brand = 'COCOONCENTER', from, to }) {
+  const properties = resolvePropertyIds(brand);
+  const result = {};
+  for (const [bKey, propId] of properties) {
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['hostName'],
+      metrics: ['sessions'],
+    }).catch(err => { console.error(err.message); return []; });
+    result[bKey] = rows
+      .sort((a, b) => b.sessions - a.sessions)
+      .map(r => ({ hostname: r.hostName, sessions: r.sessions }));
+  }
+  return result;
+}
+
 function getFromCache(key) {
   const entry = cache.get(key);
   if (entry && (Date.now() - entry.ts) < CACHE_TTL) return entry.data;
@@ -160,6 +182,28 @@ function resolvePropertyIds(brand) {
   return [[brand, propId]];
 }
 
+// Hostnames réels vérifiés via /api/ga4/hostnames
+const MARKET_HOSTNAMES = {
+  COCOONCENTER: {
+    FR: 'www.cocooncenter.com',      // site principal FR = .com
+    UK: 'www.cocooncenter.co.uk',
+    DE: 'www.cocooncenter.de',
+    ES: 'www.cocooncenter.es',
+    IT: 'www.cocooncenter.it',
+    BE: 'www.cocooncenter.be',
+    PL: 'www.cocooncenter.pl',
+    PT: 'www.cocooncenter.pt',
+    AT: 'www.cocooncenter.at',
+    LU: 'www.cocooncenter.lu',
+    FI: 'www.cocooncenter.fi',
+    NL: 'www.cocooncenter.nl',
+    RO: 'www.cocooncenter.ro',
+    SE: 'www.cocooncenter.se',
+  },
+  PASCAL_COSTE:            { FR: 'www.pascal-coste.com' },
+  PARAPHARMACIE_LAFAYETTE: { FR: 'www.parapharmacielafayette.com' },
+};
+
 function buildStreamFilter(brand, market) {
   if (!market || market === 'ALL') return null;
 
@@ -168,31 +212,71 @@ function buildStreamFilter(brand, market) {
     : brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
     : brand;
 
+  // Essai 1 : filtre par streamId (Admin API)
   const streams = GA4_STREAMS[brandName];
-  if (!streams) return null;
+  if (streams) {
+    const streamId = streams[market];
+    if (streamId) {
+      return {
+        filter: {
+          fieldName: 'streamId',
+          stringFilter: { value: streamId, matchType: 'EXACT' },
+        },
+      };
+    }
+  }
 
-  const streamId = streams[market];
-  if (!streamId) return null;
+  // Essai 2 : fallback hostname
+  const hostnames = MARKET_HOSTNAMES[brand];
+  if (hostnames) {
+    const hostname = hostnames[market];
+    if (hostname) {
+      console.log(`GA4: no streamId for ${brand}/${market}, falling back to hostname filter (${hostname})`);
+      return {
+        filter: {
+          fieldName: 'hostName',
+          stringFilter: { value: hostname, matchType: 'EXACT' },
+        },
+      };
+    }
+  }
 
+  console.warn(`GA4: no stream or hostname found for ${brand}/${market} — no filter applied`);
+  return null;
+}
+
+function buildSourceMediumFilter(sourceMedium) {
+  if (!sourceMedium) return null;
   return {
     filter: {
-      fieldName: 'streamId',
-      stringFilter: { value: streamId, matchType: 'EXACT' },
+      fieldName: 'sessionSourceMedium',
+      stringFilter: { value: sourceMedium, matchType: 'EXACT' },
     },
   };
 }
 
-export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to }) {
-  const cacheKey = `ga4_kpis_${brand}_${market}_${from}_${to}`;
+// Combine deux filtres GA4 avec un AND
+function combineFilters(f1, f2) {
+  if (!f1 && !f2) return null;
+  if (!f1) return f2;
+  if (!f2) return f1;
+  return { andGroup: { expressions: [f1, f2] } };
+}
+
+export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  const cacheKey = `ga4_kpis_${brand}_${market}_${from}_${to}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   const properties = resolvePropertyIds(brand);
-  const metrics = ['sessions', 'totalUsers', 'transactions', 'totalRevenue'];
+  const metrics = ['sessions', 'totalUsers', 'firstTimePurchasers', 'transactions', 'totalRevenue'];
 
   let allRows = [];
   for (const [bKey, propId] of properties) {
-    const filter = buildStreamFilter(bKey, market);
+    const filter = combineFilters(
+      buildStreamFilter(bKey, market),
+      buildSourceMediumFilter(sourceMedium)
+    );
     const rows = await runGA4Report({
       propertyId: propId,
       dateFrom: from,
@@ -213,8 +297,8 @@ export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to }) {
   return agg;
 }
 
-export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, granularity = 'day' }) {
-  const cacheKey = `ga4_trend_${brand}_${market}_${from}_${to}_${granularity}`;
+export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, granularity = 'day', sourceMedium }) {
+  const cacheKey = `ga4_trend_${brand}_${market}_${from}_${to}_${granularity}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
@@ -223,7 +307,10 @@ export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, gra
 
   let allRows = [];
   for (const [bKey, propId] of properties) {
-    const filter = buildStreamFilter(bKey, market);
+    const filter = combineFilters(
+      buildStreamFilter(bKey, market),
+      buildSourceMediumFilter(sourceMedium)
+    );
     const rows = await runGA4Report({
       propertyId: propId,
       dateFrom: from,
@@ -262,48 +349,78 @@ export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, gra
   return series;
 }
 
-export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to }) {
-  const cacheKey = `ga4_channels_${brand}_${market}_${from}_${to}`;
+export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, compFrom, compTo, sourceMedium }) {
+  const cacheKey = `ga4_channels_${brand}_${market}_${from}_${to}_${compFrom || ''}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   const properties = resolvePropertyIds(brand);
   const metrics = ['sessions', 'totalRevenue', 'transactions'];
 
-  let allRows = [];
-  for (const [bKey, propId] of properties) {
-    const filter = buildStreamFilter(bKey, market);
-    const rows = await runGA4Report({
-      propertyId: propId,
-      dateFrom: from,
-      dateTo: to,
-      dimensions: ['sessionDefaultChannelGroup'],
-      metrics,
-      dimensionFilter: filter,
-    }).catch(err => {
-      console.error(`GA4 channels query error (${bKey}):`, err.message);
-      return [];
-    });
-    allRows.push(...rows);
+  async function fetchChannelRows(dateFrom, dateTo) {
+    let rows = [];
+    for (const [bKey, propId] of properties) {
+      const filter = combineFilters(
+        buildStreamFilter(bKey, market),
+        buildSourceMediumFilter(sourceMedium)
+      );
+      const r = await runGA4Report({
+        propertyId: propId,
+        dateFrom,
+        dateTo,
+        dimensions: ['sessionDefaultChannelGroup'],
+        metrics,
+        dimensionFilter: filter,
+      }).catch(err => { console.error(`GA4 channels query error (${bKey}):`, err.message); return []; });
+      rows.push(...r);
+    }
+    return rows;
   }
 
-  const byChannel = {};
-  for (const row of allRows) {
-    const ch = row.sessionDefaultChannelGroup || 'Other';
-    if (!byChannel[ch]) byChannel[ch] = { sessions: 0, revenue: 0, transactions: 0 };
-    byChannel[ch].sessions += row.sessions;
-    byChannel[ch].revenue += row.totalRevenue;
-    byChannel[ch].transactions += row.transactions;
+  function aggregateByChannel(rows) {
+    const map = {};
+    for (const row of rows) {
+      const ch = row.sessionDefaultChannelGroup || 'Other';
+      if (!map[ch]) map[ch] = { sessions: 0, revenue: 0, transactions: 0 };
+      map[ch].sessions += row.sessions;
+      map[ch].revenue += row.totalRevenue;
+      map[ch].transactions += row.transactions;
+    }
+    return map;
   }
 
-  const result = Object.entries(byChannel)
-    .map(([channel, d]) => ({
-      channel,
-      sessions: d.sessions,
-      revenue: r2(d.revenue),
-      transactions: d.transactions,
-      cvr: d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0,
-    }))
+  function pct(cur, prev) {
+    if (!prev) return cur > 0 ? 100 : 0;
+    return r2(((cur - prev) / prev) * 100);
+  }
+
+  const [curRows, prevRows] = await Promise.all([
+    fetchChannelRows(from, to),
+    compFrom && compTo ? fetchChannelRows(compFrom, compTo) : Promise.resolve([]),
+  ]);
+
+  const cur = aggregateByChannel(curRows);
+  const prev = aggregateByChannel(prevRows);
+  const totalSessions = Object.values(cur).reduce((s, d) => s + d.sessions, 0);
+
+  const result = Object.entries(cur)
+    .map(([channel, d]) => {
+      const p = prev[channel] || { sessions: 0, revenue: 0, transactions: 0 };
+      const cvr     = d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0;
+      const prevCvr = p.sessions > 0 ? r2((p.transactions / p.sessions) * 100) : 0;
+      return {
+        channel,
+        sessions:     d.sessions,
+        revenue:      r2(d.revenue),
+        transactions: d.transactions,
+        cvr,
+        sessionsPct:  totalSessions > 0 ? r2((d.sessions / totalSessions) * 100) : 0,
+        delta_sessions:     pct(d.sessions, p.sessions),
+        delta_revenue:      pct(d.revenue, p.revenue),
+        delta_transactions: pct(d.transactions, p.transactions),
+        delta_cvr:          pct(cvr, prevCvr),
+      };
+    })
     .sort((a, b) => b.sessions - a.sessions);
 
   setCache(cacheKey, result);
@@ -313,16 +430,18 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to }
 // ─── Helpers ───────────────────────────────────────────
 
 function aggregateGA4Rows(rows) {
-  let sessions = 0, users = 0, transactions = 0, revenue = 0;
+  let sessions = 0, users = 0, newCustomers = 0, transactions = 0, revenue = 0;
   for (const r of rows) {
     sessions += r.sessions || 0;
     users += r.totalUsers || 0;
+    newCustomers += r.firstTimePurchasers || 0;
     transactions += r.transactions || 0;
     revenue += r.totalRevenue || 0;
   }
   return {
     sessions,
     users,
+    newCustomers,
     transactions,
     revenue: r2(revenue),
     cvr: sessions > 0 ? r2((transactions / sessions) * 100) : 0,

@@ -91,28 +91,28 @@ export function useDemoMode() {
 
 // ─── GA4 hooks ─────────────────────────────────────────
 
-export function useGA4Kpis({ brand, market, from, to, compareTo }) {
+export function useGA4Kpis({ brand, market, from, to, compareTo, sourceMedium }) {
   return useQuery({
-    queryKey: ['ga4Kpis', brand, market, from, to, compareTo],
-    queryFn: () => fetchApi('/api/ga4/kpis', { brand, market, from, to, compareTo }),
+    queryKey: ['ga4Kpis', brand, market, from, to, compareTo, sourceMedium],
+    queryFn: () => fetchApi('/api/ga4/kpis', { brand, market, from, to, compareTo, sourceMedium }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
-export function useGA4Trend({ brand, market, from, to, granularity }) {
+export function useGA4Trend({ brand, market, from, to, granularity, sourceMedium }) {
   return useQuery({
-    queryKey: ['ga4Trend', brand, market, from, to, granularity],
-    queryFn: () => fetchApi('/api/ga4/trend', { brand, market, from, to, granularity }),
+    queryKey: ['ga4Trend', brand, market, from, to, granularity, sourceMedium],
+    queryFn: () => fetchApi('/api/ga4/trend', { brand, market, from, to, granularity, sourceMedium }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
-export function useGA4Channels({ brand, market, from, to }) {
+export function useGA4Channels({ brand, market, from, to, compareTo, sourceMedium }) {
   return useQuery({
-    queryKey: ['ga4Channels', brand, market, from, to],
-    queryFn: () => fetchApi('/api/ga4/channels', { brand, market, from, to }),
+    queryKey: ['ga4Channels', brand, market, from, to, compareTo, sourceMedium],
+    queryFn: () => fetchApi('/api/ga4/channels', { brand, market, from, to, compareTo, sourceMedium }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });

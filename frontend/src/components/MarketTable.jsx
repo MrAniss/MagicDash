@@ -49,20 +49,20 @@ const COLUMNS = [
   { key: 'cpc',               label: 'CPC',          format: v => fEur(v, true),  align: 'right' },
   { key: 'delta_cpc',         label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, invert: true, isPct: true },
   { key: 'ctr',               label: 'CTR',          format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', align: 'right', isPct: true },
-  { key: 'delta_ctr',         label: '\u0394',        format: v => fDelta(v, 'abs'), align: 'right', isDelta: true, isPct: true },
+  { key: 'delta_ctr',         label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   { key: 'cvr',               label: 'CVR',          format: fPct,                align: 'right', isPct: true },
-  { key: 'delta_cvr',         label: '\u0394',        format: v => fDelta(v, 'abs'), align: 'right', isDelta: true, isPct: true },
+  { key: 'delta_cvr',         label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   // ── Business ──
   { key: 'spend',             label: 'SPEND',        format: fEur,                align: 'right' },
   { key: 'delta_spend',       label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   { key: 'revenue',           label: 'REVENUE',      format: fEur,                align: 'right' },
   { key: 'delta_revenue',     label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   { key: 'roas',              label: 'ROAS',         format: fROAS,               align: 'right', colorCode: true },
-  { key: 'delta_roas',        label: '\u0394',        format: v => fDelta(v, 'abs'), align: 'right', isDelta: true, isPct: true },
+  { key: 'delta_roas',        label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   { key: 'conversions',       label: 'CONV.',        format: fNum,                align: 'right' },
   { key: 'delta_conversions', label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
   { key: 'aov',               label: 'PANIER MOY.',  format: fAov,                align: 'right' },
-  { key: 'delta_aov',         label: '\u0394',        format: v => v != null && !isNaN(v) ? `${v > 0 ? '+' : ''}${v.toFixed(2)} \u20AC` : '\u2014', align: 'right', isDelta: true },
+  { key: 'delta_aov',         label: '\u0394',        format: v => fDelta(v, 'pct'), align: 'right', isDelta: true, isPct: true },
 ];
 
 function roasColor(roas) {

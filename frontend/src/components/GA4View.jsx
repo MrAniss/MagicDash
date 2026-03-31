@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useGA4Kpis, useGA4Trend, useGA4Channels, useKpis } from '../hooks/useAdsData';
 import { fEur, fNum, fPct, fDelta, fAov } from '../utils/formatters';
 
 // ─── KPI config for GA4 scorecards ─────────────────────
 const GA4_KPI_CONFIG = [
-  { key: 'sessions', label: 'SESSIONS', format: fNum, deltaKey: 'sessions_pct', accent: '#378ADD' },
-  { key: 'users', label: 'UTILISATEURS', format: fNum, deltaKey: 'users_pct', accent: '#7F77DD' },
-  { key: 'revenue', label: 'REVENUE', format: fEur, deltaKey: 'revenue_pct', accent: '#00E89A' },
+  { key: 'sessions',  label: 'SESSIONS',        format: fNum, deltaKey: 'sessions_pct',  accent: '#378ADD' },
+  { key: 'users',     label: 'UTILISATEURS',    format: fNum, deltaKey: 'users_pct',     accent: '#7F77DD' },
+  { key: 'newCustomers', label: 'NOUVEAUX CLIENTS', format: fNum, deltaKey: 'newCustomers_pct', accent: '#A78BFA' },
+  { key: 'revenue',   label: 'REVENUE',         format: fEur, deltaKey: 'revenue_pct',   accent: '#00E89A' },
   { key: 'transactions', label: 'TRANSACTIONS', format: fNum, deltaKey: 'transactions_pct', accent: '#F5A623' },
-  { key: 'cvr', label: 'CVR', format: fPct, deltaKey: 'cvr_pct', accent: '#1A2E4A' },
-  { key: 'aov', label: 'PANIER MOYEN', format: fAov, deltaKey: 'aov_pct', accent: '#00B87A' },
+  { key: 'cvr',       label: 'CVR',             format: fPct, deltaKey: 'cvr_pct',       accent: '#1A2E4A' },
+  { key: 'aov',       label: 'PANIER MOYEN',    format: fAov, deltaKey: 'aov_pct',       accent: '#00B87A' },
 ];
 
 const CHANNEL_COLORS = {
@@ -45,7 +46,7 @@ function Skeleton({ h = 'h-64' }) {
 function GA4KpiCards({ data, isLoading }) {
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-6 gap-4">
+      <div className="grid grid-cols-7 gap-4">
         {GA4_KPI_CONFIG.map(k => (
           <div key={k.key} className="bg-white rounded-card p-5 border border-border shadow-card">
             <div className="skeleton h-2.5 w-12 mb-3" />
@@ -60,7 +61,7 @@ function GA4KpiCards({ data, isLoading }) {
   const { current, previous, deltas } = data;
 
   return (
-    <div className="grid grid-cols-6 gap-4">
+    <div className="grid grid-cols-7 gap-4">
       {GA4_KPI_CONFIG.map(kpi => {
         const value = current[kpi.key];
         const prevValue = previous[kpi.key];
@@ -122,7 +123,6 @@ function ReconciliationTable({ ga4Data, adsData, isLoading }) {
       ads: fPct(ads.cvr),
       ga4Raw: ga4.cvr,
       adsRaw: ads.cvr,
-      isPct: true,
     },
     {
       label: 'Panier moyen',
@@ -133,14 +133,10 @@ function ReconciliationTable({ ga4Data, adsData, isLoading }) {
     },
   ];
 
-  function computeGap(ga4Val, adsVal, isPct) {
-    if (isPct) {
-      const diff = ga4Val - adsVal;
-      return { text: `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}pt`, diff: Math.abs(diff), absPct: Math.abs(diff) };
-    }
-    if (adsVal === 0) return { text: '—', diff: 0, absPct: 0 };
+  function computeGap(ga4Val, adsVal) {
+    if (adsVal === 0) return { text: '—', absPct: 0 };
     const pct = ((ga4Val - adsVal) / adsVal) * 100;
-    return { text: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, diff: pct, absPct: Math.abs(pct) };
+    return { text: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, absPct: Math.abs(pct) };
   }
 
   return (
@@ -163,7 +159,7 @@ function ReconciliationTable({ ga4Data, adsData, isLoading }) {
         </thead>
         <tbody>
           {rows.map(row => {
-            const gap = computeGap(row.ga4Raw, row.adsRaw, row.isPct);
+            const gap = computeGap(row.ga4Raw, row.adsRaw);
             let gapColor = 'text-navy-muted';
             if (gap.absPct > 20) gapColor = 'text-danger';
             else if (gap.absPct > 10) gapColor = 'text-warning';
@@ -236,9 +232,13 @@ function ChannelBreakdown({ data, isLoading }) {
                 <th className="text-left text-navy-muted text-xs font-medium py-2">Canal</th>
                 <th className="text-right text-navy-muted text-xs font-medium py-2">Sessions</th>
                 <th className="text-right text-navy-muted text-xs font-medium py-2">%</th>
+                <th className="text-right text-navy-muted text-xs font-medium py-2">Δ Sess.</th>
                 <th className="text-right text-navy-muted text-xs font-medium py-2">Revenue</th>
-                <th className="text-right text-navy-muted text-xs font-medium py-2">Conversions</th>
+                <th className="text-right text-navy-muted text-xs font-medium py-2">Δ Rev.</th>
+                <th className="text-right text-navy-muted text-xs font-medium py-2">Conv.</th>
+                <th className="text-right text-navy-muted text-xs font-medium py-2">Δ Conv.</th>
                 <th className="text-right text-navy-muted text-xs font-medium py-2">CVR</th>
+                <th className="text-right text-navy-muted text-xs font-medium py-2">Δ CVR</th>
               </tr>
             </thead>
             <tbody>
@@ -251,9 +251,13 @@ function ChannelBreakdown({ data, isLoading }) {
                   </td>
                   <td className="py-2 text-right text-navy text-xs">{fNum(d.sessions)}</td>
                   <td className="py-2 text-right text-navy-muted text-xs">{d.sessionsPct}%</td>
+                  <td className={`py-2 text-right text-xs font-medium ${d.delta_sessions > 0 ? 'text-success' : d.delta_sessions < 0 ? 'text-danger' : 'text-navy-muted'}`}>{fDelta(d.delta_sessions, 'pct')}</td>
                   <td className="py-2 text-right text-navy text-xs">{fEur(d.revenue)}</td>
+                  <td className={`py-2 text-right text-xs font-medium ${d.delta_revenue > 0 ? 'text-success' : d.delta_revenue < 0 ? 'text-danger' : 'text-navy-muted'}`}>{fDelta(d.delta_revenue, 'pct')}</td>
                   <td className="py-2 text-right text-navy text-xs">{fNum(d.transactions)}</td>
+                  <td className={`py-2 text-right text-xs font-medium ${d.delta_transactions > 0 ? 'text-success' : d.delta_transactions < 0 ? 'text-danger' : 'text-navy-muted'}`}>{fDelta(d.delta_transactions, 'pct')}</td>
                   <td className="py-2 text-right text-navy text-xs">{fPct(d.cvr)}</td>
+                  <td className={`py-2 text-right text-xs font-medium ${d.delta_cvr > 0 ? 'text-success' : d.delta_cvr < 0 ? 'text-danger' : 'text-navy-muted'}`}>{fDelta(d.delta_cvr, 'pct')}</td>
                 </tr>
               ))}
             </tbody>
@@ -339,27 +343,44 @@ function GA4CvrAovTrend({ filters }) {
 
 // ─── Main GA4View ──────────────────────────────────────
 export default function GA4View({ filters }) {
-  const ga4Kpis = useGA4Kpis(filters);
-  const ga4Channels = useGA4Channels(filters);
-  const adsKpis = useKpis(filters);
+  const [sourceMedium, setSourceMedium] = useState('google / cpc');
+
+  const ga4Filters = { ...filters, sourceMedium: sourceMedium || undefined };
+  const ga4Kpis        = useGA4Kpis(ga4Filters);
+  const ga4KpisCpc     = useGA4Kpis({ ...filters, sourceMedium: 'google / cpc' }); // toujours google/cpc pour la réconciliation
+  const ga4Channels    = useGA4Channels(ga4Filters);
+  const adsKpis        = useKpis(filters);
 
   return (
     <div className="space-y-6">
+      {/* Filtre source/medium */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-navy-muted font-medium">Source/Support :</span>
+        <div className="flex bg-white border border-border rounded-inner p-0.5">
+          {[{ key: 'google / cpc', label: 'Google CPC' }, { key: '', label: 'Tout le trafic' }].map(opt => (
+            <button key={opt.key} onClick={() => setSourceMedium(opt.key)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${sourceMedium === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Section 1: KPI Scorecards */}
       <GA4KpiCards data={ga4Kpis.data} isLoading={ga4Kpis.isLoading} />
 
-      {/* Section 2: GA4 vs Google Ads */}
+      {/* Section 2: GA4 vs Google Ads — toujours google/cpc */}
       <ReconciliationTable
-        ga4Data={ga4Kpis.data}
+        ga4Data={ga4KpisCpc.data}
         adsData={adsKpis.data}
-        isLoading={ga4Kpis.isLoading || adsKpis.isLoading}
+        isLoading={ga4KpisCpc.isLoading || adsKpis.isLoading}
       />
 
       {/* Section 3: Channel Breakdown */}
       <ChannelBreakdown data={ga4Channels.data} isLoading={ga4Channels.isLoading} />
 
       {/* Section 4: CVR & AOV Trend */}
-      <GA4CvrAovTrend filters={filters} />
+      <GA4CvrAovTrend filters={ga4Filters} />
     </div>
   );
 }

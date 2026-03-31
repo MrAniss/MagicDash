@@ -35,9 +35,9 @@ const VIEW_TABS = [
 ];
 
 const PRESETS = [
-  { key: 'yesterday', label: 'Hier' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'last_week', label: 'Last Week' },
-  { key: '30d', label: '30j' },
+  { key: 'last_month', label: 'Last Month' },
   { key: 'MTD', label: 'MTD' },
   { key: 'QTD', label: 'QTD' },
   { key: 'YTD', label: 'YTD' },

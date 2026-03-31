@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams } from '../ga4Client.js';
+import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams, getGA4Streams, getGA4Hostnames } from '../ga4Client.js';
 
 const router = express.Router();
 
@@ -47,16 +47,17 @@ async function ensureStreams() {
 router.get('/kpis', async (req, res) => {
   try {
     await ensureStreams();
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', sourceMedium } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const current = await getGA4Kpis({ brand, market, from, to });
+    const current = await getGA4Kpis({ brand, market, from, to, sourceMedium });
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const previous = await getGA4Kpis({ brand, market, from: compFrom, to: compTo });
+    const previous = await getGA4Kpis({ brand, market, from: compFrom, to: compTo, sourceMedium });
 
     const deltas = {
       sessions_pct: pctChange(current.sessions, previous.sessions),
       users_pct: pctChange(current.users, previous.users),
+      newCustomers_pct: pctChange(current.newCustomers, previous.newCustomers),
       transactions_pct: pctChange(current.transactions, previous.transactions),
       revenue_pct: pctChange(current.revenue, previous.revenue),
       cvr_pct: pctChange(current.cvr, previous.cvr),
@@ -74,10 +75,10 @@ router.get('/kpis', async (req, res) => {
 router.get('/trend', async (req, res) => {
   try {
     await ensureStreams();
-    const { brand = 'ALL', market = 'ALL', from, to, granularity = 'day' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, granularity = 'day', sourceMedium } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const series = await getGA4Trend({ brand, market, from, to, granularity });
+    const series = await getGA4Trend({ brand, market, from, to, granularity, sourceMedium });
     res.json(series);
   } catch (err) {
     console.error('GA4 Trend error:', err.message);
@@ -89,13 +90,35 @@ router.get('/trend', async (req, res) => {
 router.get('/channels', async (req, res) => {
   try {
     await ensureStreams();
-    const { brand = 'ALL', market = 'ALL', from, to } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', sourceMedium } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const channels = await getGA4Channels({ brand, market, from, to });
+    const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
+    const channels = await getGA4Channels({ brand, market, from, to, compFrom, compTo, sourceMedium });
     res.json(channels);
   } catch (err) {
     console.error('GA4 Channels error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/ga4/streams — debug ──────────────────────
+router.get('/streams', async (req, res) => {
+  try {
+    await ensureStreams();
+    res.json(getGA4Streams());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/ga4/hostnames — debug (liste les vrais hostnames GA4) ──────────
+router.get('/hostnames', async (req, res) => {
+  try {
+    const { brand = 'COCOONCENTER', from = '2026-03-01', to = '2026-03-31' } = req.query;
+    const hostnames = await getGA4Hostnames({ brand, from, to });
+    res.json(hostnames);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
