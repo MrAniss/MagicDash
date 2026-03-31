@@ -6,7 +6,6 @@ import { getPresetRange } from '../utils/dateHelpers';
 import { FlagIcon, marketName } from '../utils/flags';
 
 const BRAND_TABS = [
-  { key: 'ALL', label: 'All Brands' },
   { key: 'COCOONCENTER', label: 'Cocooncenter' },
   { key: 'PASCAL_COSTE', label: 'Pascal Coste' },
   { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Para. Lafayette' },
@@ -36,8 +35,8 @@ const VIEW_TABS = [
 ];
 
 const PRESETS = [
+  { key: 'yesterday', label: 'Hier' },
   { key: 'last_week', label: 'Last Week' },
-  { key: '7d', label: '7j' },
   { key: '30d', label: '30j' },
   { key: 'MTD', label: 'MTD' },
   { key: 'QTD', label: 'QTD' },

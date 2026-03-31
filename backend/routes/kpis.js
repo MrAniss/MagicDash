@@ -92,11 +92,14 @@ function computeDeltas(current, previous) {
   return {
     spend_pct: pctChange(current.spend, previous.spend),
     revenue_pct: pctChange(current.revenue, previous.revenue),
-    roas_abs: current.roas - previous.roas,
+    roas_pct: pctChange(current.roas, previous.roas),
     conversions_pct: pctChange(current.conversions, previous.conversions),
-    cvr_abs: current.cvr - previous.cvr,
+    cvr_pct: pctChange(current.cvr, previous.cvr),
     clicks_pct: pctChange(current.clicks, previous.clicks),
     impressions_pct: pctChange(current.impressions, previous.impressions),
+    ctr_pct: pctChange(current.ctr, previous.ctr),
+    aov_pct: pctChange(current.aov, previous.aov),
+    cpc_pct: pctChange(current.cpc, previous.cpc),
   };
 }
 
@@ -106,7 +109,7 @@ function pctChange(current, previous) {
 }
 
 function emptyMetrics() {
-  return { spend: 0, revenue: 0, roas: 0, conversions: 0, cvr: 0, clicks: 0, impressions: 0 };
+  return { spend: 0, revenue: 0, roas: 0, conversions: 0, cvr: 0, clicks: 0, impressions: 0, ctr: 0, aov: 0, cpc: 0 };
 }
 
 export { getFilteredAccounts, getComparisonDates };

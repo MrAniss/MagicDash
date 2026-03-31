@@ -1,17 +1,19 @@
-import { fEur, fNum, fPct, fROAS, fDelta, fAov } from '../utils/formatters';
+import { fEur, fNum, fPct, fROAS, fDelta, fAov, fCompact, fEurCompact } from '../utils/formatters';
 
-// ─── KPI config — ordre : trafic d'abord, puis business ──────────────────────
+// ─── KPI config ───────────────────────────────────────────────────────────────
+// neutral: true  → pas de couleur sur le delta
+// invert: true   → positif = mauvais (rouge), négatif = bon (vert)
 const KPI_CONFIG = [
-  { key: 'impressions', label: 'IMPRESSIONS',  format: fNum,  deltaKey: 'impressions_pct', neutral: true, accent: '#A78BFA' },
-  { key: 'clicks',      label: 'CLICS',        format: fNum,  deltaKey: 'clicks_pct',      neutral: true, accent: '#60A5FA' },
-  { key: 'cpc',         label: 'CPC',          format: v => fEur(v, true), deltaKey: 'cpc_pct', neutral: true, accent: '#F59E0B' },
-  { key: 'ctr',         label: 'CTR',          format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', deltaKey: 'ctr_pct', neutral: true, accent: '#D4537E' },
-  { key: 'cvr',         label: 'CVR',          format: fPct,  deltaKey: 'cvr_pct',         accent: '#1A2E4A' },
-  { key: 'spend',       label: 'SPEND',        format: fEur,  deltaKey: 'spend_pct',       neutral: true, accent: '#378ADD' },
-  { key: 'revenue',     label: 'REVENUE',      format: fEur,  deltaKey: 'revenue_pct',     accent: '#00E89A' },
-  { key: 'roas',        label: 'ROAS',         format: fROAS, deltaKey: 'roas_pct',        accent: '#00B87A' },
-  { key: 'conversions', label: 'CONVERSIONS',  format: fNum,  deltaKey: 'conversions_pct', accent: '#F5A623' },
-  { key: 'aov',         label: 'PANIER MOYEN', format: fAov,  deltaKey: 'aov_pct',         accent: '#7F77DD' },
+  { key: 'impressions', label: 'IMPRESSIONS',  format: fCompact,          deltaKey: 'impressions_pct', accent: '#A78BFA' },
+  { key: 'clicks',      label: 'CLICS',        format: fCompact,          deltaKey: 'clicks_pct',      accent: '#60A5FA' },
+  { key: 'cpc',         label: 'CPC',          format: v => fEur(v, true),deltaKey: 'cpc_pct',         accent: '#F59E0B', invert: true },
+  { key: 'ctr',         label: 'CTR',          format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', deltaKey: 'ctr_pct', accent: '#D4537E' },
+  { key: 'cvr',         label: 'CVR',          format: fPct,              deltaKey: 'cvr_pct',         accent: '#1A2E4A' },
+  { key: 'spend',       label: 'SPEND',        format: fEurCompact,       deltaKey: 'spend_pct',       accent: '#378ADD', neutral: true },
+  { key: 'revenue',     label: 'REVENUE',      format: fEurCompact,       deltaKey: 'revenue_pct',     accent: '#00E89A' },
+  { key: 'roas',        label: 'ROAS',         format: fROAS,             deltaKey: 'roas_pct',        accent: '#00B87A' },
+  { key: 'conversions', label: 'CONVERSIONS',  format: fCompact,          deltaKey: 'conversions_pct', accent: '#F5A623' },
+  { key: 'aov',         label: 'PANIER MOYEN', format: fAov,              deltaKey: 'aov_pct',         accent: '#7F77DD' },
 ];
 
 function Skeleton() {
@@ -38,18 +40,22 @@ export default function KpiCards({ data, isLoading }) {
   return (
     <div className="grid grid-cols-10 gap-4">
       {KPI_CONFIG.map(kpi => {
-        const value    = current[kpi.key];
+        const value     = current[kpi.key];
         const prevValue = previous[kpi.key];
-        const delta    = deltas[kpi.deltaKey];
+        const delta     = deltas[kpi.deltaKey];
         const isPositive = delta > 0;
         const isNegative = delta < 0;
 
         let deltaColor = 'text-navy-muted';
         if (!kpi.neutral) {
-          deltaColor = isPositive ? 'text-success' : isNegative ? 'text-danger' : 'text-navy-muted';
+          if (kpi.invert) {
+            deltaColor = isPositive ? 'text-danger' : isNegative ? 'text-success' : 'text-navy-muted';
+          } else {
+            deltaColor = isPositive ? 'text-success' : isNegative ? 'text-danger' : 'text-navy-muted';
+          }
         }
 
-        const arrow    = isPositive ? '\u25B2' : isNegative ? '\u25BC' : '';
+        const arrow     = isPositive ? '\u25B2' : isNegative ? '\u25BC' : '';
         const deltaText = `${arrow} ${fDelta(delta, 'pct')}`;
 
         return (

@@ -28,6 +28,24 @@ export function fAov(value) {
   return eurDetailFormatter.format(value);
 }
 
+// Compact : 1 234 567 → 1,2M | 45 300 → 45,3K
+export function fCompact(value) {
+  if (value == null || isNaN(value)) return '—';
+  if (value >= 1_000_000) return (value / 1_000_000).toFixed(1).replace('.', ',') + 'M';
+  if (value >= 10_000)    return Math.round(value / 1_000).toFixed(0) + 'K';
+  if (value >= 1_000)     return (value / 1_000).toFixed(1).replace('.', ',') + 'K';
+  return numFormatter.format(value);
+}
+
+// Compact euros : 1 234 567 € → 1,2M€ | 45 300 € → 45,3K€
+export function fEurCompact(value) {
+  if (value == null || isNaN(value)) return '—';
+  if (value >= 1_000_000) return (value / 1_000_000).toFixed(1).replace('.', ',') + 'M€';
+  if (value >= 10_000)    return Math.round(value / 1_000).toFixed(0) + 'K€';
+  if (value >= 1_000)     return (value / 1_000).toFixed(1).replace('.', ',') + 'K€';
+  return eurFormatter.format(value);
+}
+
 export function fDelta(value, type = 'pct') {
   if (value == null || isNaN(value)) return '—';
   const sign = value > 0 ? '+' : '';

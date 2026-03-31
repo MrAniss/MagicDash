@@ -31,6 +31,8 @@ export function getSameISOWeekPreviousYear(from) {
 export function getPresetRange(preset) {
   const today = new Date();
   switch (preset) {
+    case 'yesterday':
+      return { from: fmt(subDays(today, 1)), to: fmt(subDays(today, 1)) };
     case 'last_week':
       return getLastCompleteWeek();
     case '7d':
