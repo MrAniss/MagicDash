@@ -204,6 +204,41 @@ const MARKET_HOSTNAMES = {
   PARAPHARMACIE_LAFAYETTE: { FR: 'www.parapharmacielafayette.com' },
 };
 
+// Marchés sans domaine propre → filtrage hostname partagé + pays
+// Ces marchés utilisent www.cocooncenter.co.uk mais ont leur propre pays dans GA4
+const MARKET_SHARED = {
+  COCOONCENTER: {
+    NO: { hostname: 'www.cocooncenter.co.uk', country: 'Norway'       },
+    IE: { hostname: 'www.cocooncenter.co.uk', country: 'Ireland'      },
+    SA: { hostname: 'www.cocooncenter.co.uk', country: 'Saudi Arabia' },
+    CA: { hostname: 'www.cocooncenter.co.uk', country: 'Canada'       },
+    AU: { hostname: 'www.cocooncenter.co.uk', country: 'Australia'    },
+    US: { hostname: 'www.cocooncenter.co.uk', country: 'United States'},
+  },
+};
+
+// Garde pour compatibilité resolveFilterTag
+const MARKET_COUNTRIES = {
+  COCOONCENTER: Object.fromEntries(
+    Object.entries(MARKET_SHARED.COCOONCENTER).map(([k, v]) => [k, v.country])
+  ),
+};
+
+// Retourne un tag court décrivant le type de filtre utilisé pour ce marché
+// → inclus dans le cache key pour invalider automatiquement si la logique change
+function resolveFilterTag(brand, market) {
+  if (!market || market === 'ALL') return 'all';
+  const brandName = brand === 'COCOONCENTER' ? 'Cocooncenter'
+    : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
+    : brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
+    : brand;
+  const streams   = GA4_STREAMS[brandName];
+  if (streams?.[market])                    return `stream:${streams[market]}`;
+  if (MARKET_HOSTNAMES[brand]?.[market])    return `host:${MARKET_HOSTNAMES[brand][market]}`;
+  if (MARKET_COUNTRIES[brand]?.[market])    return `country:${MARKET_COUNTRIES[brand][market]}`;
+  return 'nofilter';
+}
+
 function buildStreamFilter(brand, market) {
   if (!market || market === 'ALL') return null;
 
@@ -228,20 +263,32 @@ function buildStreamFilter(brand, market) {
 
   // Essai 2 : fallback hostname
   const hostnames = MARKET_HOSTNAMES[brand];
-  if (hostnames) {
+  if (hostnames?.[market]) {
     const hostname = hostnames[market];
-    if (hostname) {
-      console.log(`GA4: no streamId for ${brand}/${market}, falling back to hostname filter (${hostname})`);
-      return {
-        filter: {
-          fieldName: 'hostName',
-          stringFilter: { value: hostname, matchType: 'EXACT' },
-        },
-      };
-    }
+    console.log(`GA4: no streamId for ${brand}/${market}, fallback hostname (${hostname})`);
+    return {
+      filter: {
+        fieldName: 'hostName',
+        stringFilter: { value: hostname, matchType: 'EXACT' },
+      },
+    };
   }
 
-  console.warn(`GA4: no stream or hostname found for ${brand}/${market} — no filter applied`);
+  // Essai 3 : hostname partagé + pays (marchés sans domaine propre)
+  const shared = MARKET_SHARED[brand]?.[market];
+  if (shared) {
+    console.log(`GA4: shared domain for ${brand}/${market} → hostname(${shared.hostname}) + country(${shared.country})`);
+    return {
+      andGroup: {
+        expressions: [
+          { filter: { fieldName: 'hostName', stringFilter: { value: shared.hostname, matchType: 'EXACT' } } },
+          { filter: { fieldName: 'country',  stringFilter: { value: shared.country,  matchType: 'EXACT' } } },
+        ],
+      },
+    };
+  }
+
+  console.warn(`GA4: no filter found for ${brand}/${market} — no filter applied`);
   return null;
 }
 
@@ -255,16 +302,21 @@ function buildSourceMediumFilter(sourceMedium) {
   };
 }
 
-// Combine deux filtres GA4 avec un AND
+// Combine deux filtres GA4 avec un AND (aplatit les andGroup imbriqués)
 function combineFilters(f1, f2) {
   if (!f1 && !f2) return null;
   if (!f1) return f2;
   if (!f2) return f1;
-  return { andGroup: { expressions: [f1, f2] } };
+  const exprs = [
+    ...(f1.andGroup ? f1.andGroup.expressions : [f1]),
+    ...(f2.andGroup ? f2.andGroup.expressions : [f2]),
+  ];
+  return { andGroup: { expressions: exprs } };
 }
 
 export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
-  const cacheKey = `ga4_kpis_${brand}_${market}_${from}_${to}_${sourceMedium || ''}`;
+  const filterTag  = resolveFilterTag(brand, market);
+  const cacheKey   = `ga4_kpis_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
@@ -298,7 +350,8 @@ export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sour
 }
 
 export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, granularity = 'day', sourceMedium }) {
-  const cacheKey = `ga4_trend_${brand}_${market}_${from}_${to}_${granularity}_${sourceMedium || ''}`;
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_trend_${brand}_${market}_${filterTag}_${from}_${to}_${granularity}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
@@ -350,12 +403,13 @@ export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, gra
 }
 
 export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, compFrom, compTo, sourceMedium }) {
-  const cacheKey = `ga4_channels_${brand}_${market}_${from}_${to}_${compFrom || ''}_${sourceMedium || ''}`;
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_channels_${brand}_${market}_${filterTag}_${from}_${to}_${compFrom || ''}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
   const properties = resolvePropertyIds(brand);
-  const metrics = ['sessions', 'totalRevenue', 'transactions'];
+  const metrics = ['sessions', 'totalUsers', 'firstTimePurchasers', 'totalRevenue', 'transactions'];
 
   async function fetchChannelRows(dateFrom, dateTo) {
     let rows = [];
@@ -381,9 +435,11 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
     const map = {};
     for (const row of rows) {
       const ch = row.sessionDefaultChannelGroup || 'Other';
-      if (!map[ch]) map[ch] = { sessions: 0, revenue: 0, transactions: 0 };
-      map[ch].sessions += row.sessions;
-      map[ch].revenue += row.totalRevenue;
+      if (!map[ch]) map[ch] = { sessions: 0, users: 0, newCustomers: 0, revenue: 0, transactions: 0 };
+      map[ch].sessions     += row.sessions;
+      map[ch].users        += row.totalUsers;
+      map[ch].newCustomers += row.firstTimePurchasers;
+      map[ch].revenue      += row.totalRevenue;
       map[ch].transactions += row.transactions;
     }
     return map;
@@ -402,23 +458,36 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
   const cur = aggregateByChannel(curRows);
   const prev = aggregateByChannel(prevRows);
   const totalSessions = Object.values(cur).reduce((s, d) => s + d.sessions, 0);
+  const empty = { sessions: 0, users: 0, newCustomers: 0, revenue: 0, transactions: 0 };
 
   const result = Object.entries(cur)
     .map(([channel, d]) => {
-      const p = prev[channel] || { sessions: 0, revenue: 0, transactions: 0 };
-      const cvr     = d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0;
-      const prevCvr = p.sessions > 0 ? r2((p.transactions / p.sessions) * 100) : 0;
+      const p            = prev[channel] || empty;
+      const cvr          = d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0;
+      const prevCvr      = p.sessions > 0 ? r2((p.transactions / p.sessions) * 100) : 0;
+      const aov          = d.transactions > 0 ? r2(d.revenue / d.transactions) : 0;
+      const prevAov      = p.transactions > 0 ? r2(p.revenue / p.transactions) : 0;
+      const ncRate       = d.transactions > 0 ? r2((d.newCustomers / d.transactions) * 100) : 0;
+      const prevNcRate   = p.transactions > 0 ? r2((p.newCustomers / p.transactions) * 100) : 0;
       return {
         channel,
-        sessions:     d.sessions,
-        revenue:      r2(d.revenue),
-        transactions: d.transactions,
+        sessions:           d.sessions,
+        users:              d.users,
+        newCustomers:       d.newCustomers,
+        revenue:            r2(d.revenue),
+        transactions:       d.transactions,
         cvr,
-        sessionsPct:  totalSessions > 0 ? r2((d.sessions / totalSessions) * 100) : 0,
-        delta_sessions:     pct(d.sessions, p.sessions),
-        delta_revenue:      pct(d.revenue, p.revenue),
+        aov,
+        ncRate,
+        sessionsPct:        totalSessions > 0 ? r2((d.sessions / totalSessions) * 100) : 0,
+        delta_sessions:     pct(d.sessions,     p.sessions),
+        delta_users:        pct(d.users,        p.users),
+        delta_newCustomers: pct(d.newCustomers, p.newCustomers),
+        delta_revenue:      pct(d.revenue,      p.revenue),
         delta_transactions: pct(d.transactions, p.transactions),
-        delta_cvr:          pct(cvr, prevCvr),
+        delta_cvr:          pct(cvr,            prevCvr),
+        delta_aov:          pct(aov,            prevAov),
+        delta_ncRate:       pct(ncRate,         prevNcRate),
       };
     })
     .sort((a, b) => b.sessions - a.sessions);

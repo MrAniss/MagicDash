@@ -13,6 +13,7 @@ import CompetitionView from './components/CompetitionView';
 import RecommendationsView from './components/RecommendationsView';
 import ShoppingView from './components/ShoppingView';
 import AssistantView from './components/AssistantView';
+import AssetsView from './components/AssetsView';
 import { useKpis, useMarkets, useDemoMode, useRecommendationsSummary } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
@@ -107,6 +108,10 @@ export default function App() {
 
         {activeView === 'assistant' && (
           <AssistantView />
+        )}
+
+        {activeView === 'assets' && (
+          <AssetsView />
         )}
       </main>
 

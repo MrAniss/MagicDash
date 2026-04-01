@@ -21,6 +21,7 @@ import competitionRouter from './routes/competition.js';
 import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
 import assistantRouter from './routes/assistant.js';
+import assetsRouter from './routes/assets.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +36,7 @@ app.use('/api/competition', competitionRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
 app.use('/api/assistant', assistantRouter);
+app.use('/api/assets', assetsRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
