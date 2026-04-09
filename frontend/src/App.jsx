@@ -10,11 +10,10 @@ import CampaignDrilldown from './components/CampaignDrilldown';
 import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
 import CompetitionView from './components/CompetitionView';
-import RecommendationsView from './components/RecommendationsView';
 import ShoppingView from './components/ShoppingView';
 import AssistantView from './components/AssistantView';
 import AssetsView from './components/AssetsView';
-import { useKpis, useMarkets, useDemoMode, useRecommendationsSummary } from './hooks/useAdsData';
+import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
 const STORAGE_KEY = 'sea_dashboard_filters';
@@ -39,11 +38,9 @@ export default function App() {
   const dataSource = modeData?.source;
   const kpis = useKpis(filters);
   const markets = useMarkets(filters);
-  const { data: recsSummary } = useRecommendationsSummary();
-
   return (
-    <div className="min-h-screen bg-bg-page">
-      <Header filters={filters} onFiltersChange={setFilters} activeView={activeView} onViewChange={setActiveView} recsBadge={recsSummary?.high || 0} />
+    <div className="min-h-screen bg-bg-page flex flex-col">
+      <Header filters={filters} onFiltersChange={setFilters} activeView={activeView} onViewChange={setActiveView} />
 
       <main className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {dataSource === 'sheets' && (
@@ -98,11 +95,7 @@ export default function App() {
           <CompetitionView />
         )}
 
-        {activeView === 'recommendations' && (
-          <RecommendationsView filters={filters} />
-        )}
-
-        {activeView === 'shopping' && (
+{activeView === 'shopping' && (
           <ShoppingView />
         )}
 
@@ -114,6 +107,14 @@ export default function App() {
           <AssetsView />
         )}
       </main>
+
+      <footer className="mt-auto py-5 text-center border-t border-border">
+        <span className="text-xs text-navy-muted tracking-widest uppercase select-none">
+          Made with{' '}
+          <span className="text-danger mx-0.5">♥</span>
+          {' '}· Dhygietal
+        </span>
+      </footer>
 
     </div>
   );

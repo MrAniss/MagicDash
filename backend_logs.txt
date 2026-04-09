@@ -510,3 +510,34 @@ Emitted 'error' event on Server instance at:
 
 Node.js v24.14.0
 Failed running 'server.js'. Waiting for file changes before restarting...
+Restarting 'server.js'
+Restarting 'server.js'
+Restarting 'server.js'
+SEA Dashboard API running on http://localhost:3001 [source: google-ads-api] v2
+Restarting 'server.js'
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\Dhygietal\Documents\dashproject\node_modules\express\lib\application.js:635:24)
+    at file:///C:/Users/Dhygietal/Documents/dashproject/backend/server.js:884:5
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1984:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v24.14.0
+Failed running 'server.js'. Waiting for file changes before restarting...

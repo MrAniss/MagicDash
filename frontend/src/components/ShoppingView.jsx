@@ -427,24 +427,29 @@ function PriceBreakdownBar({ pb }) {
   );
 }
 
-function GroupedTable({ data, isLoading, groupBy }) {
+function GroupedTable({ data, isLoading, groupBy, search = '' }) {
   const [sortKey, setSortKey] = useState('impressions');
   const [order, setOrder]     = useState('desc');
 
   // ⚠️ useMemo must stay here — BEFORE any early returns (Rules of Hooks)
   const sorted = useMemo(() => {
     if (!data?.length) return [];
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? data.filter(g => (g.name || '').toLowerCase().includes(q))
+      : data;
     const dir = order === 'desc' ? -1 : 1;
-    return [...data].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const av = sortKey === 'name' ? (a.name || '') : (a[sortKey] ?? -Infinity);
       const bv = sortKey === 'name' ? (b.name || '') : (b[sortKey] ?? -Infinity);
       if (typeof av === 'string') return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [data, sortKey, order]);
+  }, [data, sortKey, order, search]);
 
   if (isLoading) return <Skeleton rows={8} />;
-  if (!sorted.length) return <EmptyState />;
+  if (!data?.length) return <EmptyState />;
+  if (!sorted.length) return <EmptyState msg={`Aucun résultat pour « ${search} »`} />;
 
   function handleSort(col) {
     if (sortKey === col) setOrder(o => o === 'desc' ? 'asc' : 'desc');
@@ -1105,21 +1110,34 @@ export default function ShoppingView() {
               { key: 'brand',    label: 'Marque' },
               { key: 'category', label: 'Catégorie' },
             ].map(g => (
-              <button key={g.key} onClick={() => setGranularity(g.key)}
+              <button key={g.key} onClick={() => { setGranularity(g.key); setSearch(''); setOffset(0); }}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${granularity === g.key ? 'bg-navy text-white shadow-sm' : 'text-navy-muted hover:text-navy'}`}>
                 {g.label}
               </button>
             ))}
           </div>
 
+          {/* Search — always visible, adapts to granularity */}
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-navy-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder={
+                granularity === 'brand'    ? 'Rechercher une marque…' :
+                granularity === 'category' ? 'Rechercher une catégorie…' :
+                'Nom, ID produit ou marque…'
+              }
+              value={search}
+              onChange={e => { setSearch(e.target.value); setOffset(0); }}
+              className="bg-bg-page border border-border rounded-inner pl-8 pr-3 py-1.5 text-xs text-navy placeholder-navy-muted focus:border-navy outline-none w-60"
+            />
+          </div>
+
           {/* Product-only filters */}
           {granularity === 'product' && (
             <>
-              <input
-                type="text" placeholder="Rechercher un produit..." value={search}
-                onChange={e => { setSearch(e.target.value); setOffset(0); }}
-                className="bg-bg-page border border-border rounded-inner px-3 py-1.5 text-xs text-navy placeholder-navy-muted focus:border-navy outline-none w-52"
-              />
               <select value={prodBrand} onChange={e => { setProdBrand(e.target.value); setOffset(0); }}
                 className="bg-white border border-border rounded-inner px-3 py-1.5 text-xs text-navy font-medium focus:border-navy outline-none">
                 <option value="ALL">Toutes les marques produit</option>
@@ -1156,6 +1174,7 @@ export default function ShoppingView() {
             data={granularity === 'brand' ? brandGrouped : categoryGrouped}
             isLoading={granularity === 'brand' ? brandGroupedLoading : categoryGroupedLoading}
             groupBy={granularity}
+            search={search}
           />
         )}
       </SectionCard>

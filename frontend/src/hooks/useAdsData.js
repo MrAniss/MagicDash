@@ -118,11 +118,3 @@ export function useGA4Channels({ brand, market, from, to, compareTo, sourceMediu
   });
 }
 
-export function useRecommendationsSummary() {
-  return useQuery({
-    queryKey: ['recommendationsSummary'],
-    queryFn: () => fetchApi('/api/recommendations/summary', {}),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-}
