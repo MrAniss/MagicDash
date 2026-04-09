@@ -7,13 +7,13 @@ const MC_CONFIG = {
   COCOONCENTER: [
     '7284268',    // cocooncenter.com (FR)
     '134179870',  // cocooncenter.be
-    '279126399',  // cocooncenter.co.uk
+    '279126399',  // cocooncenter.co.uk  (also used by UK, US, CA, AU, SA, NO, IE)
     '115705933',  // cocooncenter.de
     '121177476',  // cocooncenter.es
     '560424120',  // cocooncenter.it
     '5737145093', // cocooncenter.at
     '5752364776', // cocooncenter.fi
-    '5747584038', // cocooncenter.ie
+    '5747584038', // cocooncenter.ie (own account)
     '5752192866', // cocooncenter.nl
     '5351916428', // cocooncenter.pl
     '5751926635', // cocooncenter.pt
@@ -23,6 +23,42 @@ const MC_CONFIG = {
   PASCAL_COSTE:            ['9831411'],
   PARAPHARMACIE_LAFAYETTE: ['510562869'],
 };
+
+// Market → single MC account. US/CA/AU/SA/NO/IE share the .co.uk account.
+// This prevents cross-currency pollution when merging all accounts.
+const MC_MARKET_ID = {
+  COCOONCENTER: {
+    FR: '7284268',
+    BE: '134179870',
+    UK: '279126399',
+    US: '279126399',
+    CA: '279126399',
+    AU: '279126399',
+    SA: '279126399',
+    NO: '279126399',
+    IE: '279126399',
+    DE: '115705933',
+    ES: '121177476',
+    IT: '560424120',
+    AT: '5737145093',
+    FI: '5752364776',
+    NL: '5752192866',
+    PL: '5351916428',
+    PT: '5751926635',
+    RO: '5748405752',
+    SE: '5752364749',
+  },
+};
+
+// ─── Price conversion ─────────────────────────────────────
+// MC reports API returns prices in micros (÷ 1 000 000 = currency unit).
+// Confirmed via direct API calls: 12310000 → 12.31 EUR, 167160000 → 167.16 SEK.
+const MICROS_DIVISOR = 1_000_000;
+
+function microsToEur(micros) {
+  if (!micros) return null;
+  return Math.round(Number(micros) / MICROS_DIVISOR * 100) / 100;
+}
 
 // ─── Caches ───────────────────────────────────────────────
 const priceCache = new Map(); // merchantId -> { prices, ts }
@@ -36,7 +72,12 @@ export function clearMcCache() {
   pcCache.clear();
 }
 
-function getMcIdsForBrand(brand) {
+function getMcIdsForBrand(brand, market = 'ALL') {
+  // When a specific market is given, only query that market's MC account
+  // to avoid cross-currency pollution (e.g. SEK prices overwriting EUR prices).
+  if (market !== 'ALL' && MC_MARKET_ID[brand]?.[market]) {
+    return [MC_MARKET_ID[brand][market]];
+  }
   if (brand === 'ALL') return Object.values(MC_CONFIG).flat();
   return MC_CONFIG[brand] ?? [];
 }
@@ -74,8 +115,9 @@ async function fetchProductPricesForMerchant(merchantId) {
     for (const row of (res.data.results || [])) {
       const pv = row.productView;
       if (!pv?.offerId || !pv?.priceMicros) continue;
+
       prices[pv.offerId] = {
-        price:    Math.round(Number(pv.priceMicros) / 10000) / 100,
+        price:    microsToEur(pv.priceMicros),
         currency: pv.currencyCode || 'EUR',
       };
     }
@@ -89,11 +131,11 @@ async function fetchProductPricesForMerchant(merchantId) {
   return prices;
 }
 
-export async function getPriceMap(brand) {
+export async function getPriceMap(brand, market = 'ALL') {
   try {
-    const ids = getMcIdsForBrand(brand);
+    const ids = getMcIdsForBrand(brand, market);
     if (!ids.length) return {};
-    const maps   = await Promise.all(ids.map(id => fetchProductPricesForMerchant(id)));
+    const maps = await Promise.all(ids.map(id => fetchProductPricesForMerchant(id)));
     return Object.assign({}, ...maps);
   } catch (e) {
     console.error('getPriceMap error:', e?.message);
@@ -111,12 +153,12 @@ function normalizeOfferId(offerId) {
 }
 
 function computeCompetitiveness(ourMicros, benchmarkMicros) {
-  const our       = ourMicros       / 1_000_000;
-  const benchmark = benchmarkMicros / 1_000_000;
-  const delta     = (our - benchmark) / benchmark;
+  const our       = microsToEur(ourMicros);
+  const benchmark = microsToEur(benchmarkMicros);
+  const delta = benchmark > 0 ? (our - benchmark) / benchmark : 0;
   return {
-    our_price:       Math.round(our       * 100) / 100,
-    benchmark_price: Math.round(benchmark * 100) / 100,
+    our_price:       our,
+    benchmark_price: benchmark,
     delta_pct:       Math.round(delta * 10000) / 100,
     delta_eur:       Math.round((our - benchmark) * 100) / 100,
     status: delta < -0.05 ? 'COMPETITIVE' : delta > 0.05 ? 'EXPENSIVE' : 'ON_PAR',
@@ -167,17 +209,18 @@ async function fetchPriceCompForMerchant(merchantId) {
   return results;
 }
 
-export async function getPriceCompetitivenessData(brand) {
-  const cached = pcCache.get(brand);
+export async function getPriceCompetitivenessData(brand, market = 'ALL') {
+  const cacheKey = `${brand}::${market}`;
+  const cached = pcCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts) < PC_CACHE_TTL) return cached.data;
 
   try {
-    const ids = getMcIdsForBrand(brand);
+    const ids = getMcIdsForBrand(brand, market);
     if (!ids.length) return {};
     const maps   = await Promise.all(ids.map(id => fetchPriceCompForMerchant(id)));
     const merged = Object.assign({}, ...maps);
-    console.log(`MC price comp total: ${Object.keys(merged).length} products for brand ${brand}`);
-    pcCache.set(brand, { data: merged, ts: Date.now() });
+    console.log(`MC price comp total: ${Object.keys(merged).length} products for ${brand}/${market}`);
+    pcCache.set(cacheKey, { data: merged, ts: Date.now() });
     return merged;
   } catch (e) {
     console.error('getPriceCompetitivenessData error:', e?.message);

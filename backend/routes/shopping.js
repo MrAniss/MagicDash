@@ -149,8 +149,8 @@ router.get('/products', async (req, res) => {
 
     const [rows, priceMap, pcMap] = await Promise.all([
       getShoppingData(brand, market, from, to),
-      getPriceMap(brand),
-      getPriceCompetitivenessData(brand),
+      getPriceMap(brand, market),
+      getPriceCompetitivenessData(brand, market),
     ]);
     const products = enrichProducts(aggregateProducts(rows), priceMap, pcMap);
 
@@ -218,7 +218,7 @@ router.get('/brands', async (req, res) => {
 
     const [rows, pcMap] = await Promise.all([
       getShoppingData(brand, market, from, to),
-      getPriceCompetitivenessData(brand),
+      getPriceCompetitivenessData(brand, market),
     ]);
     const products = aggregateProducts(rows);
     const brands = aggregateBrands(products, pcMap);
@@ -240,7 +240,7 @@ router.get('/price-summary', async (req, res) => {
 
     const [rows, pcMap] = await Promise.all([
       getShoppingData(brand, market, from, to),
-      getPriceCompetitivenessData(brand),
+      getPriceCompetitivenessData(brand, market),
     ]);
     const products = aggregateProducts(rows).filter(p => p.impressions > 0);
 
