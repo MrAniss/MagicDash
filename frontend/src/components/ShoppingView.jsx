@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fEur, fNum, fROAS } from '../utils/formatters';
 
@@ -37,6 +37,32 @@ function fImpr(v) {
   if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
   if (v >= 1e3) return (v / 1e3).toFixed(0) + 'k';
   return String(v);
+}
+
+function downloadCsv(filename, headers, rows) {
+  const esc = v => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportButton({ onClick, label = 'Exporter CSV' }) {
+  return (
+    <button onClick={onClick}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-navy-muted border border-border rounded-inner bg-white hover:border-navy hover:text-navy transition-colors">
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      {label}
+    </button>
+  );
 }
 
 function deltaColor(v, invert = false) {
@@ -101,11 +127,11 @@ const COMPARE_OPTIONS = [
 
 // ─── Sub-components ───────────────────────────────────────
 
-function SortableHeader({ col, label, sortKey, onSort, order, className = '' }) {
+function SortableHeader({ col, label, sortKey, onSort, order, align = 'right' }) {
   const active = sortKey === col;
   return (
     <th onClick={() => onSort(col)}
-      className={`px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer select-none hover:text-navy transition-colors ${className}`}>
+      className={`px-3 py-3 text-${align} text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer select-none hover:text-navy transition-colors`}>
       {label} {active ? (order === 'desc' ? '↓' : '↑') : ''}
     </th>
   );
@@ -277,7 +303,7 @@ function PriceScoreCards({ priceSummary, isLoading, activeStatus, onStatusChange
 // ─── Section 3 : Brands table ─────────────────────────────
 
 function BrandsTable({ brands, isLoading, showAll, onToggleAll }) {
-  const [sortKey, setSortKey] = useState('revenue');
+  const [sortKey, setSortKey] = useState('impressions');
   const [order, setOrder] = useState('desc');
 
   function handleSort(col) {
@@ -296,24 +322,39 @@ function BrandsTable({ brands, isLoading, showAll, onToggleAll }) {
   if (isLoading) return <Skeleton />;
   if (!sorted.length) return <EmptyState />;
 
-  const maxRev = sorted[0]?.revenue || 1;
+  const maxRev = Math.max(...sorted.map(b => b.revenue || 0)) || 1;
+
+  function handleExport() {
+    downloadCsv('marques-shopping.csv',
+      ['Marque', 'Produits', 'Impressions', 'Clics', 'Revenue (€)', 'Panier moy. (€)', 'ROAS', 'CVR (%)', 'Conversions', 'Coût (€)', 'Δ Prix (%)'],
+      sorted.map(b => [
+        b.product_brand, b.product_count, b.impressions, b.clicks,
+        b.revenue?.toFixed(2), b.aov?.toFixed(2), b.roas?.toFixed(2), b.cvr?.toFixed(2),
+        b.conversions, b.cost?.toFixed(2), b.avg_delta_pct?.toFixed(2),
+      ])
+    );
+  }
 
   return (
     <div>
+      <div className="flex justify-end mb-3">
+        <ExportButton onClick={handleExport} />
+      </div>
       <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-inner border border-border">
         <table className="w-full text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-bg-page border-b-2 border-border">
               <th className="px-3 py-3 text-left text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Marque</th>
-              <SortableHeader col="product_count" label="Produits" sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="impressions"   label="Impr."    sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="clicks"        label="Clics"    sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="revenue"       label="Revenue"  sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="roas"          label="ROAS"     sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="cvr"           label="CVR"      sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="conversions"   label="Conv."    sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="cost"          label="Coût"     sortKey={sortKey} onSort={handleSort} order={order} />
-              <SortableHeader col="avg_delta_pct" label="Δ Prix"   sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="product_count" label="Produits"      sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="impressions"   label="Impr."         sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="clicks"        label="Clics"         sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="revenue"       label="Revenue"       sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="aov"           label="Panier moy."   sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="roas"          label="ROAS"          sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="cvr"           label="CVR"           sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="conversions"   label="Conv."         sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="cost"          label="Coût"          sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="avg_delta_pct" label="Δ Prix"        sortKey={sortKey} onSort={handleSort} order={order} />
             </tr>
           </thead>
           <tbody>
@@ -331,6 +372,7 @@ function BrandsTable({ brands, isLoading, showAll, onToggleAll }) {
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fImpr(b.impressions)}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(b.clicks)}</td>
                 <td className="px-3 py-2.5 text-right font-semibold text-navy group-hover:text-white">{fEur(b.revenue)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{b.aov != null ? fEur(b.aov) : <span className="text-navy-muted">—</span>}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fROASx(b.roas)}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fPct(b.cvr)}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(b.conversions)}</td>
@@ -357,6 +399,129 @@ function BrandsTable({ brands, isLoading, showAll, onToggleAll }) {
   );
 }
 
+// ─── Section 4 : Grouped table (brand / category) ────────
+
+function PriceBreakdownBar({ pb }) {
+  if (!pb || pb.total_with_data === 0) return <span className="text-[10px] text-navy-muted">—</span>;
+  return (
+    <div className="min-w-[110px]">
+      <div className="flex h-2 rounded-full overflow-hidden bg-border gap-px">
+        {pb.competitive_pct > 0 && (
+          <div style={{ width: `${pb.competitive_pct}%` }} className="bg-success" title={`Compétitif : ${pb.competitive_pct}%`} />
+        )}
+        {pb.on_par_pct > 0 && (
+          <div style={{ width: `${pb.on_par_pct}%` }} className="bg-[#1565C0]" title={`À parité : ${pb.on_par_pct}%`} />
+        )}
+        {pb.expensive_pct > 0 && (
+          <div style={{ width: `${pb.expensive_pct}%` }} className="bg-danger" title={`Trop cher : ${pb.expensive_pct}%`} />
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 mt-1 text-[10px]">
+        <span className="text-success font-medium">{pb.competitive_pct.toFixed(0)}%</span>
+        <span className="text-navy-muted/50">·</span>
+        <span className="text-[#1565C0]">{pb.on_par_pct.toFixed(0)}%</span>
+        <span className="text-navy-muted/50">·</span>
+        <span className="text-danger font-medium">{pb.expensive_pct.toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function GroupedTable({ data, isLoading, groupBy }) {
+  const [sortKey, setSortKey] = useState('impressions');
+  const [order, setOrder]     = useState('desc');
+
+  // ⚠️ useMemo must stay here — BEFORE any early returns (Rules of Hooks)
+  const sorted = useMemo(() => {
+    if (!data?.length) return [];
+    const dir = order === 'desc' ? -1 : 1;
+    return [...data].sort((a, b) => {
+      const av = sortKey === 'name' ? (a.name || '') : (a[sortKey] ?? -Infinity);
+      const bv = sortKey === 'name' ? (b.name || '') : (b[sortKey] ?? -Infinity);
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    });
+  }, [data, sortKey, order]);
+
+  if (isLoading) return <Skeleton rows={8} />;
+  if (!sorted.length) return <EmptyState />;
+
+  function handleSort(col) {
+    if (sortKey === col) setOrder(o => o === 'desc' ? 'asc' : 'desc');
+    else { setSortKey(col); setOrder('desc'); }
+  }
+
+  function handleExport() {
+    downloadCsv(`${groupBy === 'category' ? 'categories' : 'marques'}-shopping.csv`,
+      ['Nom', 'Produits', 'Impressions', 'Clics', 'Revenue (€)', 'Panier moy. (€)', 'ROAS', 'CVR (%)', 'Conv.', 'Coût (€)', '% Compétitif', '% À parité', '% Trop cher'],
+      sorted.map(g => [
+        g.name, g.product_count, g.impressions, g.clicks,
+        g.revenue?.toFixed(2), g.aov?.toFixed(2), g.roas?.toFixed(2), g.cvr?.toFixed(2),
+        g.conversions, g.cost?.toFixed(2),
+        g.price_breakdown?.competitive_pct?.toFixed(1),
+        g.price_breakdown?.on_par_pct?.toFixed(1),
+        g.price_breakdown?.expensive_pct?.toFixed(1),
+      ])
+    );
+  }
+
+  const label = groupBy === 'category' ? 'Catégorie' : 'Marque';
+
+  return (
+    <div>
+      <div className="flex justify-end mb-3">
+        <ExportButton onClick={handleExport} />
+      </div>
+      <div className="overflow-x-auto max-h-[520px] overflow-y-auto rounded-inner border border-border">
+        <table className="w-full text-[12px]">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-bg-page border-b-2 border-border">
+              <SortableHeader col="name"          label={label}    sortKey={sortKey} onSort={handleSort} order={order} align="left" />
+              <SortableHeader col="product_count" label="Produits" sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="impressions"   label="Impr."    sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="clicks"        label="Clics"    sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="revenue"       label="Revenue"     sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="aov"           label="Panier moy." sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="roas"          label="ROAS"        sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="cvr"           label="CVR"         sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="conversions"   label="Conv."       sortKey={sortKey} onSort={handleSort} order={order} />
+              <SortableHeader col="cost"          label="Coût"        sortKey={sortKey} onSort={handleSort} order={order} />
+              <th className="px-3 py-3 text-center text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] whitespace-nowrap">
+                Compétitivité prix
+                <div className="flex items-center justify-center gap-2 mt-0.5 font-normal normal-case tracking-normal text-[10px]">
+                  <span className="text-success">■ Comp.</span>
+                  <span className="text-[#1565C0]">■ Parité</span>
+                  <span className="text-danger">■ Cher</span>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((g, i) => (
+              <tr key={g.name}
+                className={`border-b border-border hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''}`}>
+                <td className="px-3 py-2.5 max-w-[220px] font-medium text-navy group-hover:text-white truncate">{g.name}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(g.product_count)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fImpr(g.impressions)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(g.clicks)}</td>
+                <td className="px-3 py-2.5 text-right font-semibold text-navy group-hover:text-white">{fEur(g.revenue)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{g.aov != null ? fEur(g.aov) : <span className="text-navy-muted">—</span>}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fROASx(g.roas)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fPct(g.cvr)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(g.conversions)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fEur(g.cost)}</td>
+                <td className="px-3 py-2.5">
+                  <PriceBreakdownBar pb={g.price_breakdown} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 4 : Products table ───────────────────────────
 
 function SegmentChip({ segment }) {
@@ -370,7 +535,7 @@ function SegmentChip({ segment }) {
   return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${meta.cls}`}>{meta.label}</span>;
 }
 
-function ProductsTable({ data, isLoading, totalFiltered, offset, onOffset, sortKey, order, onSort, brandOptions }) {
+function ProductsTable({ data, isLoading, totalFiltered, offset, onOffset, sortKey, order, onSort, brandOptions, onExport, exportLoading }) {
   const PAGE = 50;
 
   if (isLoading) return <Skeleton rows={8} />;
@@ -381,6 +546,12 @@ function ProductsTable({ data, isLoading, totalFiltered, offset, onOffset, sortK
 
   return (
     <div>
+      <div className="flex justify-end mb-3">
+        <ExportButton
+          onClick={onExport}
+          label={exportLoading ? 'Export en cours…' : `Exporter CSV (${total} produits)`}
+        />
+      </div>
       <div className="overflow-x-auto max-h-[520px] overflow-y-auto rounded-inner border border-border">
         <table className="w-full text-[12px]">
           <thead className="sticky top-0 z-10">
@@ -389,9 +560,10 @@ function ProductsTable({ data, isLoading, totalFiltered, offset, onOffset, sortK
               <th className="px-3 py-3 text-left text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Marque</th>
               <SortableHeader col="impressions" label="Impr."   sortKey={sortKey} onSort={onSort} order={order} />
               <SortableHeader col="clicks"      label="Clics"   sortKey={sortKey} onSort={onSort} order={order} />
-              <SortableHeader col="revenue"         label="Revenue"    sortKey={sortKey} onSort={onSort} order={order} />
-              <SortableHeader col="conversions"     label="Conv."      sortKey={sortKey} onSort={onSort} order={order} />
-              <SortableHeader col="cost"            label="Coût"       sortKey={sortKey} onSort={onSort} order={order} />
+              <SortableHeader col="revenue"         label="Revenue"      sortKey={sortKey} onSort={onSort} order={order} />
+              <SortableHeader col="avg_price"       label="Panier moy." sortKey={sortKey} onSort={onSort} order={order} />
+              <SortableHeader col="conversions"     label="Conv."        sortKey={sortKey} onSort={onSort} order={order} />
+              <SortableHeader col="cost"            label="Coût"         sortKey={sortKey} onSort={onSort} order={order} />
               <SortableHeader col="price"           label="Notre prix" sortKey={sortKey} onSort={onSort} order={order} />
               <SortableHeader col="benchmark_price" label="Prix marché"   sortKey={sortKey} onSort={onSort} order={order} />
               <th className="px-3 py-3 text-center text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Compétitivité</th>
@@ -412,6 +584,7 @@ function ProductsTable({ data, isLoading, totalFiltered, offset, onOffset, sortK
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fImpr(p.impressions)}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(p.clicks)}</td>
                 <td className="px-3 py-2.5 text-right font-semibold text-navy group-hover:text-white">{fEur(p.revenue)}</td>
+                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{p.avg_price != null ? fEur(p.avg_price) : <span className="text-navy-muted">—</span>}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fNum(p.conversions)}</td>
                 <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fEur(p.cost)}</td>
                 <td className="px-3 py-2.5 text-right font-medium text-navy group-hover:text-white">
@@ -493,58 +666,205 @@ function LowCvrTable({ products, isLoading }) {
   );
 }
 
-// ─── Section 7 : Comparison ───────────────────────────────
+// ─── Section 7 : Brand Comparison ────────────────────────
 
-function ComparisonTable({ data, isLoading, trendFilter, onTrendFilter }) {
+function aggregateByBrand(products) {
+  const map = new Map();
+  for (const p of products) {
+    const key = p.product_brand || '(unknown)';
+    if (!map.has(key)) {
+      map.set(key, {
+        brand: key,
+        products: [],
+        cur: { revenue: 0, cost: 0, conversions: 0, clicks: 0 },
+        prev: { revenue: 0, cost: 0, conversions: 0, clicks: 0 },
+        hasPrev: false,
+      });
+    }
+    const entry = map.get(key);
+    entry.products.push(p);
+    if (p.current) {
+      entry.cur.revenue     += p.current.revenue     || 0;
+      entry.cur.cost        += p.current.cost        || 0;
+      entry.cur.conversions += p.current.conversions || 0;
+      entry.cur.clicks      += p.current.clicks      || 0;
+    }
+    if (p.previous) {
+      entry.prev.revenue     += p.previous.revenue     || 0;
+      entry.prev.cost        += p.previous.cost        || 0;
+      entry.prev.conversions += p.previous.conversions || 0;
+      entry.prev.clicks      += p.previous.clicks      || 0;
+      entry.hasPrev = true;
+    }
+  }
+
+  return Array.from(map.values()).map(b => {
+    const curRoas  = b.cur.cost  > 0 ? b.cur.revenue  / b.cur.cost  : 0;
+    const prevRoas = b.prev.cost > 0 ? b.prev.revenue / b.prev.cost : 0;
+    const curCvr   = b.cur.clicks  > 0 ? (b.cur.conversions  / b.cur.clicks)  * 100 : 0;
+    const prevCvr  = b.prev.clicks > 0 ? (b.prev.conversions / b.prev.clicks) * 100 : 0;
+    const deltaRev  = b.hasPrev && b.prev.revenue > 0 ? ((b.cur.revenue - b.prev.revenue) / b.prev.revenue) * 100 : null;
+    const deltaRoas = b.hasPrev && prevRoas > 0 ? ((curRoas - prevRoas) / prevRoas) * 100 : null;
+    const deltaCvr  = b.hasPrev && prevCvr  > 0 ? ((curCvr  - prevCvr)  / prevCvr)  * 100 : null;
+
+    // Brand trend: majority wins, NEW/GONE > UP/DOWN
+    const counts = { UP: 0, DOWN: 0, NEW: 0, GONE: 0 };
+    for (const p of b.products) if (p.trend) counts[p.trend]++;
+    let trend = 'UP';
+    if (counts.NEW  > 0 && counts.NEW  === b.products.length) trend = 'NEW';
+    else if (counts.GONE > 0 && counts.GONE === b.products.length) trend = 'GONE';
+    else if (deltaRev === null) trend = 'NEW';
+    else if (deltaRev > 0) trend = 'UP';
+    else trend = 'DOWN';
+
+    return {
+      brand: b.brand,
+      products: b.products.sort((a, b) => (b.current?.revenue || 0) - (a.current?.revenue || 0)),
+      productCount: b.products.length,
+      curRevenue: b.cur.revenue,
+      prevRevenue: b.hasPrev ? b.prev.revenue : null,
+      curRoas,
+      prevRoas: b.hasPrev ? prevRoas : null,
+      curCvr,
+      prevCvr: b.hasPrev ? prevCvr : null,
+      deltaRev,
+      deltaRoas,
+      deltaCvr,
+      trend,
+    };
+  }).sort((a, b) => b.curRevenue - a.curRevenue);
+}
+
+function TrendBadge({ trend }) {
+  if (trend === 'UP')   return <span className="text-[10px] font-semibold text-success bg-success-bg px-1.5 py-0.5 rounded">↑ Hausse</span>;
+  if (trend === 'DOWN') return <span className="text-[10px] font-semibold text-danger bg-danger-bg px-1.5 py-0.5 rounded">↓ Baisse</span>;
+  if (trend === 'NEW')  return <span className="text-[10px] font-semibold text-[#1565C0] bg-[#E3F2FD] px-1.5 py-0.5 rounded">✦ Nouveau</span>;
+  if (trend === 'GONE') return <span className="text-[10px] font-semibold text-navy-muted bg-bg-page px-1.5 py-0.5 rounded">✕ Disparu</span>;
+  return null;
+}
+
+function BrandComparisonTable({ data, isLoading, trendFilter, onTrendFilter }) {
+  const [expanded, setExpanded] = useState(new Set());
+
   if (isLoading) return <Skeleton rows={8} />;
 
-  const filtered = (data || []).filter(p => trendFilter === 'ALL' || p.trend === trendFilter).slice(0, 200);
+  const brands = aggregateByBrand(data || []);
+  const filtered = brands.filter(b => trendFilter === 'ALL' || b.trend === trendFilter);
   if (!filtered.length) return <EmptyState />;
+
+  function toggleBrand(name) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  }
+
+  const thCls = 'px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]';
+
+  function handleExport() {
+    // Brand-level rows
+    const headerBrands = ['Marque', 'Produits', 'Rev. actuel (€)', 'Rev. préc. (€)', 'Δ Rev. (%)', 'ROAS act.', 'Δ ROAS (%)', 'CVR act. (%)', 'Δ CVR (%)', 'Trend'];
+    const rowsBrands = filtered.map(b => [
+      b.brand, b.productCount,
+      b.curRevenue?.toFixed(2), b.prevRevenue?.toFixed(2), b.deltaRev?.toFixed(1),
+      b.curRoas?.toFixed(2), b.deltaRoas?.toFixed(1),
+      b.curCvr?.toFixed(2), b.deltaCvr?.toFixed(1),
+      b.trend,
+    ]);
+    // Rows entrelacées : ligne marque + lignes produits indentées
+    const allRows = [];
+    for (const b of filtered) {
+      allRows.push(rowsBrands[filtered.indexOf(b)]);
+      for (const p of b.products) {
+        allRows.push([
+          `  └ ${b.brand}`, p.title || p.item_id, '',
+          p.market,
+          p.current?.revenue?.toFixed(2), p.previous?.revenue?.toFixed(2), p.delta_revenue?.toFixed(1),
+          p.current?.roas?.toFixed(2), p.delta_roas?.toFixed(1),
+          p.current?.cvr?.toFixed(2), p.trend,
+        ]);
+      }
+    }
+    downloadCsv('comparaison-marques-shopping.csv', headerBrands, allRows);
+  }
 
   return (
     <div>
-      <div className="flex gap-1 mb-4">
-        {TREND_OPTIONS.map(opt => (
-          <button key={opt.key} onClick={() => onTrendFilter(opt.key)}
-            className={`px-2.5 py-1 text-xs font-medium rounded-inner transition-colors ${trendFilter === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
-            {opt.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-1">
+          {TREND_OPTIONS.map(opt => (
+            <button key={opt.key} onClick={() => onTrendFilter(opt.key)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-inner transition-colors ${trendFilter === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <ExportButton onClick={handleExport} />
       </div>
-      <div className="overflow-x-auto max-h-[520px] overflow-y-auto rounded-inner border border-border">
+      <div className="overflow-x-auto max-h-[620px] overflow-y-auto rounded-inner border border-border">
         <table className="w-full text-[12px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-bg-page border-b-2 border-border">
-              <th className="px-3 py-3 text-left text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Produit</th>
-              <th className="px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Rev. actuel</th>
-              <th className="px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Rev. préc.</th>
-              <th className="px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Δ Revenue</th>
-              <th className="px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">ROAS act.</th>
-              <th className="px-3 py-3 text-right text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Δ ROAS</th>
+              <th className="px-3 py-3 text-left text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Marque</th>
+              <th className={thCls}>Rev. actuel</th>
+              <th className={thCls}>Rev. préc.</th>
+              <th className={thCls}>Δ Rev.</th>
+              <th className={thCls}>ROAS act.</th>
+              <th className={thCls}>Δ ROAS</th>
+              <th className={thCls}>CVR act.</th>
+              <th className={thCls}>Δ CVR</th>
               <th className="px-3 py-3 text-center text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em]">Trend</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p, i) => (
-              <tr key={`${p.brand}|${p.market}|${p.item_id}`}
-                className={`border-b border-border hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''}`}>
-                <td className="px-3 py-2.5 max-w-[260px]">
-                  <p className="text-navy font-medium group-hover:text-white truncate">{p.title || p.item_id}</p>
-                  <p className="text-[10px] text-navy-muted group-hover:text-white/70">{p.product_brand} · {p.market}</p>
-                </td>
-                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{p.current ? fEur(p.current.revenue) : '—'}</td>
-                <td className="px-3 py-2.5 text-right text-navy-muted group-hover:text-white/70">{p.previous ? fEur(p.previous.revenue) : '—'}</td>
-                <td className="px-3 py-2.5 text-right"><DeltaBadge v={p.delta_revenue} suffix="%" /></td>
-                <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{p.current ? fROASx(p.current.roas) : '—'}</td>
-                <td className="px-3 py-2.5 text-right"><DeltaBadge v={p.delta_roas} suffix="" /></td>
-                <td className="px-3 py-2.5 text-center">
-                  {p.trend === 'UP'   && <span className="text-[10px] font-semibold text-success bg-success-bg px-1.5 py-0.5 rounded">↑ Hausse</span>}
-                  {p.trend === 'DOWN' && <span className="text-[10px] font-semibold text-danger bg-danger-bg px-1.5 py-0.5 rounded">↓ Baisse</span>}
-                  {p.trend === 'NEW'  && <span className="text-[10px] font-semibold text-[#1565C0] bg-[#E3F2FD] px-1.5 py-0.5 rounded">✦ Nouveau</span>}
-                  {p.trend === 'GONE' && <span className="text-[10px] font-semibold text-navy-muted bg-bg-page px-1.5 py-0.5 rounded">✕ Disparu</span>}
-                </td>
-              </tr>
-            ))}
+            {filtered.map((b, i) => {
+              const isOpen = expanded.has(b.brand);
+              return (
+                <React.Fragment key={b.brand}>
+                  <tr
+                    onClick={() => toggleBrand(b.brand)}
+                    className={`border-b border-border cursor-pointer hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''}`}>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-navy-muted group-hover:text-white/60 w-3 inline-block select-none">
+                          {isOpen ? '▾' : '▸'}
+                        </span>
+                        <div>
+                          <p className="text-navy font-semibold group-hover:text-white capitalize">{b.brand}</p>
+                          <p className="text-[10px] text-navy-muted group-hover:text-white/60">{b.productCount} produit{b.productCount > 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-navy font-medium group-hover:text-white">{fEur(b.curRevenue)}</td>
+                    <td className="px-3 py-2.5 text-right text-navy-muted group-hover:text-white/70">{b.prevRevenue !== null ? fEur(b.prevRevenue) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right"><DeltaBadge v={b.deltaRev} suffix="%" /></td>
+                    <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{fROASx(b.curRoas)}</td>
+                    <td className="px-3 py-2.5 text-right"><DeltaBadge v={b.deltaRoas} suffix="" /></td>
+                    <td className="px-3 py-2.5 text-right text-navy group-hover:text-white">{b.curCvr > 0 ? `${b.curCvr.toFixed(2)}%` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right"><DeltaBadge v={b.deltaCvr} suffix="" /></td>
+                    <td className="px-3 py-2.5 text-center"><TrendBadge trend={b.trend} /></td>
+                  </tr>
+                  {isOpen && b.products.map((p) => (
+                    <tr key={`${p.brand}|${p.market}|${p.item_id}`}
+                      className="border-b border-border/60 bg-[#F3F5FA]">
+                      <td className="pl-10 pr-3 py-2 max-w-[240px]">
+                        <p className="text-navy font-medium truncate text-[11px]">{p.title || p.item_id}</p>
+                        <p className="text-[10px] text-navy-muted">{p.market}</p>
+                      </td>
+                      <td className="px-3 py-2 text-right text-navy text-[11px]">{p.current ? fEur(p.current.revenue) : '—'}</td>
+                      <td className="px-3 py-2 text-right text-navy-muted text-[11px]">{p.previous ? fEur(p.previous.revenue) : '—'}</td>
+                      <td className="px-3 py-2 text-right"><DeltaBadge v={p.delta_revenue} suffix="%" /></td>
+                      <td className="px-3 py-2 text-right text-navy text-[11px]">{p.current ? fROASx(p.current.roas) : '—'}</td>
+                      <td className="px-3 py-2 text-right"><DeltaBadge v={p.delta_roas} suffix="" /></td>
+                      <td className="px-3 py-2 text-right text-navy text-[11px]">{p.current?.cvr > 0 ? `${p.current.cvr.toFixed(2)}%` : '—'}</td>
+                      <td className="px-3 py-2 text-right"><DeltaBadge v={p.delta_cvr} suffix="" /></td>
+                      <td className="px-3 py-2 text-center"><TrendBadge trend={p.trend} /></td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -567,13 +887,15 @@ export default function ShoppingView() {
   const [priceStatusFilter, setPriceStatus] = useState('ALL');
   const [prodBrand, setProdBrand]           = useState('ALL');
   const [search, setSearch]                 = useState('');
-  const [sortKey, setSortKey]               = useState('revenue');
+  const [sortKey, setSortKey]               = useState('impressions');
   const [order, setOrder]                 = useState('desc');
   const [offset, setOffset]               = useState(0);
 
   // UI state
   const [showAllBrands, setShowAllBrands] = useState(false);
   const [trendFilter, setTrendFilter]     = useState('ALL');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [granularity, setGranularity]     = useState('product'); // 'product' | 'brand' | 'category'
 
   function handlePreset(p) {
     const range = getPreset(p);
@@ -597,6 +919,31 @@ export default function ShoppingView() {
     if (sortKey === col) setOrder(o => o === 'desc' ? 'asc' : 'desc');
     else { setSortKey(col); setOrder('desc'); }
     setOffset(0);
+  }
+
+  async function handleExportProducts() {
+    if (exportLoading) return;
+    setExportLoading(true);
+    try {
+      const allData = await fetchApi('/api/shopping/products', {
+        brand, market, from: fromDate, to: toDate,
+        segment: activeSegment, price_status: priceStatusFilter,
+        product_brand: prodBrand, search,
+        sort: sortKey, order, limit: 5000, offset: 0,
+      });
+      downloadCsv('produits-shopping.csv',
+        ['ID', 'Titre', 'Marque produit', 'Marché', 'Impressions', 'Clics', 'Revenue (€)', 'Panier moy. (€)', 'Conv.', 'Coût (€)', 'Notre prix (€)', 'Prix marché (€)', 'Compétitivité', 'ROAS', 'CVR (%)', 'Segment'],
+        (allData.products || []).map(p => [
+          p.item_id, p.title, p.product_brand, p.market,
+          p.impressions, p.clicks,
+          p.revenue?.toFixed(2), p.avg_price?.toFixed(2), p.conversions, p.cost?.toFixed(2),
+          p.price?.toFixed(2), p.benchmark_price?.toFixed(2),
+          p.price_status || '', p.roas?.toFixed(2), p.cvr?.toFixed(2), p.segment || '',
+        ])
+      );
+    } finally {
+      setExportLoading(false);
+    }
   }
 
   const baseParams = { brand, market, from: fromDate, to: toDate };
@@ -628,6 +975,20 @@ export default function ShoppingView() {
   const { data: compData, isLoading: compLoading } = useQuery({
     queryKey: ['shopping-comparison', brand, market, fromDate, toDate, compareTo],
     queryFn: () => fetchApi('/api/shopping/comparison', { ...baseParams, compareTo }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Both grouped views are prefetched in background on page load so switching
+  // granularity feels instant. Price comp data is shared via the in-flight cache.
+  const { data: brandGrouped, isLoading: brandGroupedLoading } = useQuery({
+    queryKey: ['shopping-grouped-brand', brand, market, fromDate, toDate],
+    queryFn: () => fetchApi('/api/shopping/grouped', { ...baseParams, groupBy: 'brand' }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: categoryGrouped, isLoading: categoryGroupedLoading } = useQuery({
+    queryKey: ['shopping-grouped-category', brand, market, fromDate, toDate],
+    queryFn: () => fetchApi('/api/shopping/grouped', { ...baseParams, groupBy: 'category' }),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -733,40 +1094,70 @@ export default function ShoppingView() {
         />
       </SectionCard>
 
-      {/* ── Section 4 : Products ── */}
-      <SectionCard title="Top produits">
-        {/* Filters */}
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-          <input
-            type="text" placeholder="Rechercher un produit..." value={search}
-            onChange={e => { setSearch(e.target.value); setOffset(0); }}
-            className="bg-bg-page border border-border rounded-inner px-3 py-1.5 text-xs text-navy placeholder-navy-muted focus:border-navy outline-none w-52"
-          />
-          <select value={prodBrand} onChange={e => { setProdBrand(e.target.value); setOffset(0); }}
-            className="bg-white border border-border rounded-inner px-3 py-1.5 text-xs text-navy font-medium focus:border-navy outline-none">
-            <option value="ALL">Toutes les marques produit</option>
-            {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
-          <div className="flex gap-1 ml-auto">
-            {PRICE_STATUS_OPTIONS.map(opt => (
-              <button key={opt.key} onClick={() => handlePriceStatus(priceStatusFilter === opt.key ? 'ALL' : opt.key)}
-                className={`px-2.5 py-1 text-[11px] font-medium rounded-inner border transition-colors ${priceStatusFilter === opt.key ? opt.cls + ' border-current' : 'bg-white border-border text-navy-muted hover:text-navy'}`}>
-                {opt.label}
+      {/* ── Section 4 : Products / Brands / Categories ── */}
+      <SectionCard title="Analyse produits">
+        {/* Granularity toggle + filters */}
+        <div className="flex items-center gap-3 flex-wrap mb-4">
+          {/* Granularity pill */}
+          <div className="flex bg-bg-page rounded-inner p-0.5 border border-border">
+            {[
+              { key: 'product',  label: 'Produit' },
+              { key: 'brand',    label: 'Marque' },
+              { key: 'category', label: 'Catégorie' },
+            ].map(g => (
+              <button key={g.key} onClick={() => setGranularity(g.key)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${granularity === g.key ? 'bg-navy text-white shadow-sm' : 'text-navy-muted hover:text-navy'}`}>
+                {g.label}
               </button>
             ))}
           </div>
+
+          {/* Product-only filters */}
+          {granularity === 'product' && (
+            <>
+              <input
+                type="text" placeholder="Rechercher un produit..." value={search}
+                onChange={e => { setSearch(e.target.value); setOffset(0); }}
+                className="bg-bg-page border border-border rounded-inner px-3 py-1.5 text-xs text-navy placeholder-navy-muted focus:border-navy outline-none w-52"
+              />
+              <select value={prodBrand} onChange={e => { setProdBrand(e.target.value); setOffset(0); }}
+                className="bg-white border border-border rounded-inner px-3 py-1.5 text-xs text-navy font-medium focus:border-navy outline-none">
+                <option value="ALL">Toutes les marques produit</option>
+                {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <div className="flex gap-1 ml-auto">
+                {PRICE_STATUS_OPTIONS.map(opt => (
+                  <button key={opt.key} onClick={() => handlePriceStatus(priceStatusFilter === opt.key ? 'ALL' : opt.key)}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-inner border transition-colors ${priceStatusFilter === opt.key ? opt.cls + ' border-current' : 'bg-white border-border text-navy-muted hover:text-navy'}`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
-        <ProductsTable
-          data={productsData}
-          isLoading={prodLoading}
-          totalFiltered={productsData?.total_filtered}
-          offset={offset}
-          onOffset={setOffset}
-          sortKey={sortKey}
-          order={order}
-          onSort={handleSort}
-          brandOptions={brandOptions}
-        />
+
+        {granularity === 'product' ? (
+          <ProductsTable
+            data={productsData}
+            isLoading={prodLoading}
+            totalFiltered={productsData?.total_filtered}
+            offset={offset}
+            onOffset={setOffset}
+            sortKey={sortKey}
+            order={order}
+            onSort={handleSort}
+            brandOptions={brandOptions}
+            onExport={handleExportProducts}
+            exportLoading={exportLoading}
+          />
+        ) : (
+          <GroupedTable
+            data={granularity === 'brand' ? brandGrouped : categoryGrouped}
+            isLoading={granularity === 'brand' ? brandGroupedLoading : categoryGroupedLoading}
+            groupBy={granularity}
+          />
+        )}
       </SectionCard>
 
       {/* ── Section 5 : Zombies ── */}
@@ -851,8 +1242,8 @@ export default function ShoppingView() {
       )}
 
       {/* ── Section 7 : Comparison ── */}
-      <SectionCard title="Comparaison période">
-        <ComparisonTable
+      <SectionCard title="Comparaison par marque">
+        <BrandComparisonTable
           data={compData}
           isLoading={compLoading}
           trendFilter={trendFilter}

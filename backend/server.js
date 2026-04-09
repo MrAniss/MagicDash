@@ -882,5 +882,5 @@ app.get('/api/budget/daily-spend', async (req, res) => {
 app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }));
 
 app.listen(PORT, () => {
-  console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}]`);
+  console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
 });

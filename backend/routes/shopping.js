@@ -107,6 +107,7 @@ function aggregateBrands(products, pcMap = {}) {
       roas:          b.cost > 0 ? r2(b.revenue / b.cost) : 0,
       cvr:           b.clicks > 0 ? r2((b.conversions / b.clicks) * 100) : 0,
       ctr:           b.impressions > 0 ? r2((b.clicks / b.impressions) * 100) : 0,
+      aov:           b.conversions > 0 ? r2(b.revenue / b.conversions) : null,
       avg_delta_pct: _delta_count > 0 ? r2(_delta_sum / _delta_count) : null,
     };
   });
@@ -336,6 +337,81 @@ router.get('/comparison', async (req, res) => {
     res.json(result.slice(0, 500));
   } catch (err) {
     console.error('Shopping/comparison:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/grouped ────────────────────────────
+// groupBy = 'brand' | 'category'
+router.get('/grouped', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL', from, to, groupBy = 'brand' } = req.query;
+    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
+
+    const [rows, pcMap] = await Promise.all([
+      getShoppingData(brand, market, from, to),
+      getPriceCompetitivenessData(brand, market),
+    ]);
+    const products = aggregateProducts(rows);
+
+    const keyFn = groupBy === 'category'
+      ? p => p.category_l1 || '(Sans catégorie)'
+      : p => p.product_brand || '(Sans marque)';
+
+    const map = new Map();
+    for (const p of products) {
+      const key = keyFn(p);
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          impressions: 0, clicks: 0, cost: 0, conversions: 0, revenue: 0, product_count: 0,
+          pc: { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 },
+        });
+      }
+      const g = map.get(key);
+      g.impressions    += p.impressions;
+      g.clicks         += p.clicks;
+      g.cost           += p.cost;
+      g.conversions    += p.conversions;
+      g.revenue        += p.revenue;
+      g.product_count++;
+      const status = pcMap[p.item_id]?.status ?? 'NO_DATA';
+      g.pc[status] = (g.pc[status] || 0) + 1;
+    }
+
+    const result = Array.from(map.values()).map(g => {
+      const pcTotal = g.pc.COMPETITIVE + g.pc.ON_PAR + g.pc.EXPENSIVE;
+      return {
+        name:          g.name,
+        product_count: g.product_count,
+        impressions:   g.impressions,
+        clicks:        g.clicks,
+        cost:          r2(g.cost),
+        conversions:   g.conversions,
+        revenue:       r2(g.revenue),
+        roas:          g.cost > 0 ? r2(g.revenue / g.cost) : 0,
+        cvr:           g.clicks > 0 ? r2((g.conversions / g.clicks) * 100) : 0,
+        ctr:           g.impressions > 0 ? r2((g.clicks / g.impressions) * 100) : 0,
+        aov:           g.conversions > 0 ? r2(g.revenue / g.conversions) : null,
+        price_breakdown: {
+          competitive:     g.pc.COMPETITIVE,
+          on_par:          g.pc.ON_PAR,
+          expensive:       g.pc.EXPENSIVE,
+          no_data:         g.pc.NO_DATA,
+          total_with_data: pcTotal,
+          competitive_pct: pcTotal > 0 ? r2((g.pc.COMPETITIVE / pcTotal) * 100) : 0,
+          on_par_pct:      pcTotal > 0 ? r2((g.pc.ON_PAR      / pcTotal) * 100) : 0,
+          expensive_pct:   pcTotal > 0 ? r2((g.pc.EXPENSIVE   / pcTotal) * 100) : 0,
+        },
+      };
+    });
+
+    result.sort((a, b) => b.impressions - a.impressions);
+    res.json(result);
+  } catch (err) {
+    console.error('Shopping/grouped:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
     res.status(500).json({ error: err.message });
   }

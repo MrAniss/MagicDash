@@ -2,18 +2,17 @@ import { google } from 'googleapis';
 import { getOAuth2Client } from '../auth.js';
 
 // ─── Merchant Center IDs ──────────────────────────────────
-// Cocooncenter has one MC account per market
 const MC_CONFIG = {
   COCOONCENTER: [
     '7284268',    // cocooncenter.com (FR)
     '134179870',  // cocooncenter.be
-    '279126399',  // cocooncenter.co.uk  (also used by UK, US, CA, AU, SA, NO, IE)
+    '279126399',  // cocooncenter.co.uk  (UK + AU, CA, SA, NO, IE via shared domain)
     '115705933',  // cocooncenter.de
     '121177476',  // cocooncenter.es
     '560424120',  // cocooncenter.it
     '5737145093', // cocooncenter.at
     '5752364776', // cocooncenter.fi
-    '5747584038', // cocooncenter.ie (own account)
+    '5747584038', // cocooncenter.ie
     '5752192866', // cocooncenter.nl
     '5351916428', // cocooncenter.pl
     '5751926635', // cocooncenter.pt
@@ -24,45 +23,62 @@ const MC_CONFIG = {
   PARAPHARMACIE_LAFAYETTE: ['510562869'],
 };
 
-// Market → single MC account. US/CA/AU/SA/NO/IE share the .co.uk account.
-// This prevents cross-currency pollution when merging all accounts.
-const MC_MARKET_ID = {
+// market code → { merchantId, countryCode }
+// countryCode = ISO 3166-1 alpha-2 used in MC product IDs (product_view.id) and
+// price_competitiveness.country_code. GB is used for the UK market.
+const MC_MARKET = {
   COCOONCENTER: {
-    FR: '7284268',
-    BE: '134179870',
-    UK: '279126399',
-    US: '279126399',
-    CA: '279126399',
-    AU: '279126399',
-    SA: '279126399',
-    NO: '279126399',
-    IE: '279126399',
-    DE: '115705933',
-    ES: '121177476',
-    IT: '560424120',
-    AT: '5737145093',
-    FI: '5752364776',
-    NL: '5752192866',
-    PL: '5351916428',
-    PT: '5751926635',
-    RO: '5748405752',
-    SE: '5752364749',
+    FR: { merchantId: '7284268',    countryCode: 'FR' },
+    BE: { merchantId: '134179870',  countryCode: 'BE' },
+    UK: { merchantId: '279126399',  countryCode: 'GB' },
+    US: { merchantId: '279126399',  countryCode: 'US' },
+    CA: { merchantId: '279126399',  countryCode: 'CA' },
+    AU: { merchantId: '279126399',  countryCode: 'AU' },
+    SA: { merchantId: '279126399',  countryCode: 'SA' },
+    NO: { merchantId: '279126399',  countryCode: 'NO' },
+    IE: { merchantId: '279126399',  countryCode: 'IE' },
+    DE: { merchantId: '115705933',  countryCode: 'DE' },
+    ES: { merchantId: '121177476',  countryCode: 'ES' },
+    IT: { merchantId: '560424120',  countryCode: 'IT' },
+    AT: { merchantId: '5737145093', countryCode: 'AT' },
+    FI: { merchantId: '5752364776', countryCode: 'FI' },
+    NL: { merchantId: '5752192866', countryCode: 'NL' },
+    PL: { merchantId: '5351916428', countryCode: 'PL' },
+    PT: { merchantId: '5751926635', countryCode: 'PT' },
+    RO: { merchantId: '5748405752', countryCode: 'RO' },
+    SE: { merchantId: '5752364749', countryCode: 'SE' },
   },
 };
 
+// Returns [{ merchantId, countryCode }] for a given brand + market.
+// For market='ALL', returns all accounts with countryCode=null (no country filter).
+function getMcTargets(brand, market = 'ALL') {
+  if (market !== 'ALL' && MC_MARKET[brand]?.[market]) {
+    return [MC_MARKET[brand][market]];
+  }
+  if (brand === 'ALL') return Object.values(MC_CONFIG).flat().map(id => ({ merchantId: id, countryCode: null }));
+  return (MC_CONFIG[brand] ?? []).map(id => ({ merchantId: id, countryCode: null }));
+}
+
 // ─── Price conversion ─────────────────────────────────────
-// MC reports API returns prices in micros (÷ 1 000 000 = currency unit).
-// Confirmed via direct API calls: 12310000 → 12.31 EUR, 167160000 → 167.16 SEK.
+// MC reports API: 1 currency unit = 1 000 000 micros.
+// Confirmed: 12 310 000 → 12.31 EUR, 687 970 000 → 687.97 SEK.
 const MICROS_DIVISOR = 1_000_000;
 
-function microsToEur(micros) {
+function microsToPrice(micros) {
   if (!micros) return null;
   return Math.round(Number(micros) / MICROS_DIVISOR * 100) / 100;
 }
 
 // ─── Caches ───────────────────────────────────────────────
-const priceCache = new Map(); // merchantId -> { prices, ts }
-const pcCache    = new Map(); // brand -> { data, ts }
+// keyed by `${merchantId}::${countryCode || 'ALL'}`
+const priceCache = new Map();
+const pcCache    = new Map();
+
+// In-flight deduplication: concurrent callers share the same pending Promise
+// instead of each firing a redundant MC API request (prevents cache stampede).
+const priceInFlight = new Map();
+const pcInFlight    = new Map();
 
 const PRICE_CACHE_TTL = 60 * 60 * 1000;     // 1h
 const PC_CACHE_TTL    = 3 * 60 * 60 * 1000; // 3h
@@ -72,23 +88,11 @@ export function clearMcCache() {
   pcCache.clear();
 }
 
-function getMcIdsForBrand(brand, market = 'ALL') {
-  // When a specific market is given, only query that market's MC account
-  // to avoid cross-currency pollution (e.g. SEK prices overwriting EUR prices).
-  if (market !== 'ALL' && MC_MARKET_ID[brand]?.[market]) {
-    return [MC_MARKET_ID[brand][market]];
-  }
-  if (brand === 'ALL') return Object.values(MC_CONFIG).flat();
-  return MC_CONFIG[brand] ?? [];
-}
-
-// ─── Catalog prices via products.list ────────────────────
-
-// ─── Catalog prices via ProductView report ────────────────
-// Independent from competitiveness — returns price for ALL products
-
-async function fetchProductPricesForMerchant(merchantId) {
-  const cached = priceCache.get(merchantId);
+// ─── Catalog prices via ProductView ───────────────────────
+// countryCode filters product_view.id — format: channel:lang:COUNTRY:offerId
+async function fetchProductPricesForMerchant(merchantId, countryCode = null) {
+  const cacheKey = `${merchantId}::${countryCode || 'ALL'}`;
+  const cached = priceCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts) < PRICE_CACHE_TTL) return cached.prices;
 
   const auth    = getOAuth2Client();
@@ -116,8 +120,21 @@ async function fetchProductPricesForMerchant(merchantId) {
       const pv = row.productView;
       if (!pv?.offerId || !pv?.priceMicros) continue;
 
+      // Filter by country code when specified.
+      // product_view.id format: "channel:lang:COUNTRY:offerId"
+      if (countryCode) {
+        const idParts = (pv.id || '').split(':');
+        const rowCountry = idParts[2] || '';
+        if (rowCountry !== countryCode) continue;
+      }
+
+      // Prefer online over local when both exist for the same offerId
+      const existing = prices[pv.offerId];
+      const isOnline = (pv.id || '').startsWith('online:');
+      if (existing && !isOnline) continue;
+
       prices[pv.offerId] = {
-        price:    microsToEur(pv.priceMicros),
+        price:    microsToPrice(pv.priceMicros),
         currency: pv.currencyCode || 'EUR',
       };
     }
@@ -126,36 +143,42 @@ async function fetchProductPricesForMerchant(merchantId) {
     pages++;
   } while (pageToken && pages < 500);
 
-  console.log(`MC product prices: ${Object.keys(prices).length} products for merchant ${merchantId}`);
-  priceCache.set(merchantId, { prices, ts: Date.now() });
+  console.log(`MC catalog: ${Object.keys(prices).length} products for ${merchantId} country=${countryCode || 'ALL'}`);
+  priceCache.set(cacheKey, { prices, ts: Date.now() });
   return prices;
 }
 
 export async function getPriceMap(brand, market = 'ALL') {
-  try {
-    const ids = getMcIdsForBrand(brand, market);
-    if (!ids.length) return {};
-    const maps = await Promise.all(ids.map(id => fetchProductPricesForMerchant(id)));
-    return Object.assign({}, ...maps);
-  } catch (e) {
-    console.error('getPriceMap error:', e?.message);
-    return {};
-  }
+  const cacheKey = `priceMap::${brand}::${market}`;
+
+  // Return in-flight promise if one is already running for this key
+  if (priceInFlight.has(cacheKey)) return priceInFlight.get(cacheKey);
+
+  const promise = (async () => {
+    try {
+      const targets = getMcTargets(brand, market);
+      if (!targets.length) return {};
+      const maps = await Promise.all(
+        targets.map(({ merchantId, countryCode }) => fetchProductPricesForMerchant(merchantId, countryCode))
+      );
+      return Object.assign({}, ...maps);
+    } catch (e) {
+      console.error('getPriceMap error:', e?.message);
+      return {};
+    } finally {
+      priceInFlight.delete(cacheKey);
+    }
+  })();
+
+  priceInFlight.set(cacheKey, promise);
+  return promise;
 }
 
-// ─── Price competitiveness via reports.search ─────────────
-
-// Normalize offer ID: 'online:fr:FR:REF123' -> 'REF123'
-function normalizeOfferId(offerId) {
-  if (!offerId) return offerId;
-  const parts = offerId.split(':');
-  return parts.length >= 4 ? parts.slice(3).join(':') : offerId;
-}
-
+// ─── Price competitiveness via PriceCompetitivenessProductView ───
 function computeCompetitiveness(ourMicros, benchmarkMicros) {
-  const our       = microsToEur(ourMicros);
-  const benchmark = microsToEur(benchmarkMicros);
-  const delta = benchmark > 0 ? (our - benchmark) / benchmark : 0;
+  const our       = microsToPrice(ourMicros);
+  const benchmark = microsToPrice(benchmarkMicros);
+  const delta     = benchmark > 0 ? (our - benchmark) / benchmark : 0;
   return {
     our_price:       our,
     benchmark_price: benchmark,
@@ -165,16 +188,20 @@ function computeCompetitiveness(ourMicros, benchmarkMicros) {
   };
 }
 
-async function fetchPriceCompForMerchant(merchantId) {
+// No WHERE clause — PriceCompetitivenessProductView does not support filtering
+// price_competitiveness.country_code via GAQL WHERE, so we filter client-side
+// (same approach as fetchProductPricesForMerchant uses for product_view.id).
+async function fetchPriceCompForMerchant(merchantId, countryCode = null) {
   const auth    = getOAuth2Client();
   const content = google.content({ version: 'v2.1', auth });
 
-  // Mandatory fields: product_view.id, price_competitiveness.country_code
   const query = `SELECT product_view.id, product_view.offer_id, product_view.price_micros, product_view.currency_code, price_competitiveness.country_code, price_competitiveness.benchmark_price_micros, price_competitiveness.benchmark_price_currency_code FROM PriceCompetitivenessProductView`;
 
   const results = {};
   let pageToken;
   let pages = 0;
+  let totalRows = 0;
+  let skippedCountry = 0;
 
   do {
     const reqBody = { query, pageSize: 1000 };
@@ -184,46 +211,83 @@ async function fetchPriceCompForMerchant(merchantId) {
       merchantId,
       requestBody: reqBody,
     }).catch(e => {
-      console.error(`MC price comp ${merchantId}:`, e?.message || e);
+      console.error(`MC price comp ${merchantId}: API error — ${e?.message || e}`);
       return { data: { results: [] } };
     });
 
     for (const row of (res.data.results || [])) {
+      totalRows++;
       const pv = row.productView;
       const pc = row.priceCompetitiveness;
       if (!pv?.offerId || !pc?.benchmarkPriceMicros) continue;
+
+      // Client-side country filter — check price_competitiveness.country_code
+      if (countryCode && pc.countryCode !== countryCode) {
+        skippedCountry++;
+        continue;
+      }
+
       const ourMicros       = Number(pv.priceMicros       || 0);
       const benchmarkMicros = Number(pc.benchmarkPriceMicros || 0);
       if (!ourMicros || !benchmarkMicros) continue;
-      // Use offerId directly (already normalized, e.g. "REF123")
-      const itemId = pv.offerId;
-      // Keep highest-revenue entry if duplicate (last write wins here — acceptable)
-      results[itemId] = computeCompetitiveness(ourMicros, benchmarkMicros);
+
+      // Prefer online channel when both local and online exist for same offerId
+      const existing = results[pv.offerId];
+      const isOnline = (pv.id || '').startsWith('online:');
+      if (existing && !isOnline) continue;
+
+      results[pv.offerId] = computeCompetitiveness(ourMicros, benchmarkMicros);
     }
 
     pageToken = res.data.nextPageToken;
     pages++;
-  } while (pageToken && pages < 200);
+  } while (pageToken && pages < 500);
 
-  console.log(`MC price comp: ${Object.keys(results).length} products for merchant ${merchantId}`);
+  const matched = Object.keys(results).length;
+  console.log(`MC price comp ${merchantId} country=${countryCode || 'ALL'}: ${totalRows} rows fetched, ${skippedCountry} filtered out, ${matched} matched`);
   return results;
 }
 
 export async function getPriceCompetitivenessData(brand, market = 'ALL') {
   const cacheKey = `${brand}::${market}`;
+
+  // 1. Serve from cache if fresh
   const cached = pcCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts) < PC_CACHE_TTL) return cached.data;
 
-  try {
-    const ids = getMcIdsForBrand(brand, market);
-    if (!ids.length) return {};
-    const maps   = await Promise.all(ids.map(id => fetchPriceCompForMerchant(id)));
-    const merged = Object.assign({}, ...maps);
-    console.log(`MC price comp total: ${Object.keys(merged).length} products for ${brand}/${market}`);
-    pcCache.set(cacheKey, { data: merged, ts: Date.now() });
-    return merged;
-  } catch (e) {
-    console.error('getPriceCompetitivenessData error:', e?.message);
-    return {};
+  // 2. Share in-flight promise — prevents N concurrent callers each firing their own MC request
+  if (pcInFlight.has(cacheKey)) {
+    console.log(`MC price comp [${brand}/${market}]: reusing in-flight request`);
+    return pcInFlight.get(cacheKey);
   }
+
+  const promise = (async () => {
+    try {
+      const targets = getMcTargets(brand, market);
+      if (!targets.length) return {};
+
+      const maps = await Promise.all(
+        targets.map(({ merchantId, countryCode }) => fetchPriceCompForMerchant(merchantId, countryCode))
+      );
+      const merged = Object.assign({}, ...maps);
+      const count = Object.keys(merged).length;
+      console.log(`MC price comp total: ${count} products for ${brand}/${market}`);
+
+      // 3. Only cache non-empty results — avoids poisoning the cache with temporary API failures
+      if (count > 0) {
+        pcCache.set(cacheKey, { data: merged, ts: Date.now() });
+      } else {
+        console.warn(`MC price comp [${brand}/${market}]: got 0 results — NOT caching, will retry on next request`);
+      }
+      return merged;
+    } catch (e) {
+      console.error('getPriceCompetitivenessData error:', e?.message);
+      return {};
+    } finally {
+      pcInFlight.delete(cacheKey);
+    }
+  })();
+
+  pcInFlight.set(cacheKey, promise);
+  return promise;
 }
