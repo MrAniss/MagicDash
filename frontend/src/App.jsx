@@ -42,7 +42,7 @@ export default function App() {
     <div className="min-h-screen bg-bg-page flex flex-col">
       <Header filters={filters} onFiltersChange={setFilters} activeView={activeView} onViewChange={setActiveView} />
 
-      <main className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
+      <main className="w-full max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {dataSource === 'sheets' && (
           <div className="bg-success-bg border border-success/20 rounded-card px-4 py-2.5 text-xs text-success font-medium flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-success" />
