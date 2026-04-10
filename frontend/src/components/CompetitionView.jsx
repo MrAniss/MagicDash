@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { MarketLabel } from '../utils/flags.jsx';
+import { API_URL } from '../utils/api';
 
 // ─── Constants ──────────────────────────────────────────
 
@@ -49,7 +50,7 @@ function fPp(v) {
 // ─── API helpers ─────────────────────────────────────────
 
 async function fetchCompetition(brand, market, from, to) {
-  const url = new URL('/api/competition', window.location.origin);
+  const url = new URL('/api/competition', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('from', from);
@@ -60,7 +61,7 @@ async function fetchCompetition(brand, market, from, to) {
 }
 
 async function fetchTrend(brand, market, from, to) {
-  const url = new URL('/api/competition/trend', window.location.origin);
+  const url = new URL('/api/competition/trend', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('from', from);

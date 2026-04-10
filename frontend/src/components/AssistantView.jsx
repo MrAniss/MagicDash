@@ -3,6 +3,7 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { API_URL } from '../utils/api';
 
 // ─── Constants ─────────────────────────────────────────
 
@@ -306,7 +307,7 @@ export default function AssistantView() {
     if (market !== 'auto') context.market = market;
 
     try {
-      const res = await fetch('/api/assistant/query', {
+      const res = await fetch(`${API_URL}/api/assistant/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, context }),

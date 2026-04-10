@@ -4,6 +4,7 @@ import { getCurrentMonth } from '../utils/dateHelpers';
 import { fEur, fNum, fROAS, fAov, fDelta } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
 import BudgetDailyChart from './BudgetDailyChart';
+import { API_URL } from '../utils/api';
 
 const BRAND_OPTIONS = [
   { key: 'Cocooncenter', label: 'Cocooncenter' },
@@ -24,7 +25,7 @@ function getMarketsForBrand(brand) {
 }
 
 async function fetchBudget(brand, market, month, compareTo) {
-  const url = new URL('/api/budget', window.location.origin);
+  const url = new URL('/api/budget', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('month', month);

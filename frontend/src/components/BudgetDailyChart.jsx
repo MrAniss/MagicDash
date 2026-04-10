@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { fEur } from '../utils/formatters';
 import { marketName } from '../utils/flags';
+import { API_URL } from '../utils/api';
 
 // Market colors kept for potential future use
 const _MARKET_COLORS = [
@@ -37,7 +38,7 @@ function getYears() {
 }
 
 async function fetchDailySpend(brand, market, year) {
-  const url = new URL('/api/budget/daily-spend', window.location.origin);
+  const url = new URL('/api/budget/daily-spend', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('year', year);

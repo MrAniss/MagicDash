@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_URL } from '../utils/api';
 
 // ─── Constants ─────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function charColorClass(len, max) {
 }
 
 async function refreshDetail(groupId) {
-  const res = await fetch(`/api/assets/groups/${groupId}`);
+  const res = await fetch(`${API_URL}/api/assets/groups/${groupId}`);
   return res.json();
 }
 
@@ -376,11 +377,11 @@ function ExportModal({ group, onClose }) {
 
   async function handleExport() {
     if (format === 'csv') {
-      window.location.href = `/api/assets/export?${buildParams('csv')}`;
+      window.location.href = `${API_URL}/api/assets/export?${buildParams('csv')}`;
       onClose();
     } else {
       setCopying(true);
-      const res    = await fetch(`/api/assets/export?${buildParams('json')}`);
+      const res    = await fetch(`${API_URL}/api/assets/export?${buildParams('json')}`);
       const assets = await res.json();
       const header = 'Marché\tLangue\tType\tContenu\tCaractères\tApprouvé';
       const rows   = assets.map(a =>
@@ -468,7 +469,7 @@ export default function AssetsView() {
   async function fetchGroups() {
     setLoadingGroups(true);
     try {
-      const res  = await fetch('/api/assets/groups');
+      const res  = await fetch(`${API_URL}/api/assets/groups`);
       const data = await res.json();
       setGroups(Array.isArray(data) ? data : []);
     } finally {
@@ -501,7 +502,7 @@ export default function AssetsView() {
   // ── Group actions ─────────────────────────────────────
 
   async function handleCreateGroup(body) {
-    const res   = await fetch('/api/assets/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res   = await fetch(`${API_URL}/api/assets/groups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const group = await res.json();
     await fetchGroups();
     setSelectedGroupId(group.id);
@@ -510,7 +511,7 @@ export default function AssetsView() {
   async function handleDeleteGroup(id, e) {
     e.stopPropagation();
     if (!confirm('Supprimer ce groupe et tous ses assets ?')) return;
-    await fetch(`/api/assets/groups/${id}`, { method: 'DELETE' });
+    await fetch(`${API_URL}/api/assets/groups/${id}`, { method: 'DELETE' });
     await fetchGroups();
     if (selectedGroupId === id) { setSelectedGroupId(null); setGroupDetail(null); }
   }
@@ -518,7 +519,7 @@ export default function AssetsView() {
   // ── Asset actions ─────────────────────────────────────
 
   async function handleSaveAsset(assetId, content) {
-    await fetch(`/api/assets/${assetId}`, {
+    await fetch(`${API_URL}/api/assets/${assetId}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ content }),
@@ -527,17 +528,17 @@ export default function AssetsView() {
   }
 
   async function handleApprove(assetId) {
-    await fetch(`/api/assets/${assetId}/approve`, { method: 'PUT' });
+    await fetch(`${API_URL}/api/assets/${assetId}/approve`, { method: 'PUT' });
     await silentRefresh();
   }
 
   async function handleDeleteAsset(assetId) {
-    await fetch(`/api/assets/${assetId}`, { method: 'DELETE' });
+    await fetch(`${API_URL}/api/assets/${assetId}`, { method: 'DELETE' });
     await silentRefresh();
   }
 
   async function handleRegenerate(assetId) {
-    const res = await fetch(`/api/assets/${assetId}/regenerate`, { method: 'POST' });
+    const res = await fetch(`${API_URL}/api/assets/${assetId}/regenerate`, { method: 'POST' });
     const updated = await res.json();
     await silentRefresh();
     return updated;
@@ -546,7 +547,7 @@ export default function AssetsView() {
   async function handleAddAsset(type, content) {
     if (!selectedGroupId) return;
     const ml = MARKET_LANGUAGES[activeMarket];
-    await fetch('/api/assets', {
+    await fetch(`${API_URL}/api/assets`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
@@ -564,7 +565,7 @@ export default function AssetsView() {
   async function handleGenerate(targetMarkets) {
     if (!selectedGroupId || !groupDetail) return;
     const baseAssets = groupDetail.assetsByMarket?.FR ?? [];
-    const res = await fetch('/api/assets/generate', {
+    const res = await fetch(`${API_URL}/api/assets/generate`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({

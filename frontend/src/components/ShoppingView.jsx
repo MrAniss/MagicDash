@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fEur, fNum, fROAS } from '../utils/formatters';
+import { fetchApi } from '../utils/api';
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -76,14 +77,6 @@ function DeltaBadge({ v, suffix = '%', invert = false }) {
   const arrow = v > 0 ? '▲' : v < 0 ? '▼' : '';
   const cls = deltaColor(v, invert);
   return <span className={`text-xs font-semibold ${cls}`}>{arrow} {v > 0 ? '+' : ''}{v.toFixed(1)}{suffix}</span>;
-}
-
-async function fetchApi(path, params = {}) {
-  const url = new URL(path, window.location.origin);
-  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') url.searchParams.set(k, v); });
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 // ─── Segment config ───────────────────────────────────────

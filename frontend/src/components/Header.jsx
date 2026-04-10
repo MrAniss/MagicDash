@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStatus } from '../hooks/useAdsData';
 import { useComarket } from '../contexts/ComarketContext';
 import { getPresetRange } from '../utils/dateHelpers';
+import { API_URL } from '../utils/api';
 import { FlagIcon, marketName } from '../utils/flags';
 
 const BRAND_TABS = [
@@ -141,7 +142,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     if (refreshState === 'loading') return;
     setRefreshState('loading');
     try {
-      await fetch('/api/cache/clear', { method: 'POST' });
+      await fetch(`${API_URL}/api/cache/clear`, { method: 'POST' });
       await queryClient.invalidateQueries();
       setRefreshState('success');
       setTimeout(() => setRefreshState('idle'), 2000);

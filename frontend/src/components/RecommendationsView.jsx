@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { API_URL } from '../utils/api';
 
 const HIDDEN_KEY = 'dhygietal_hidden_recs';
 
@@ -40,7 +41,7 @@ function fEur(v) {
 }
 
 async function fetchRecs({ brand, market, type, priority }) {
-  const url = new URL('/api/recommendations', window.location.origin);
+  const url = new URL('/api/recommendations', API_URL || window.location.origin);
   if (brand !== 'ALL') url.searchParams.set('brand', brand);
   if (market !== 'ALL') url.searchParams.set('market', market);
   if (type !== 'ALL') url.searchParams.set('type', type);

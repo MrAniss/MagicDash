@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MarketLabel } from '../utils/flags.jsx';
+import { API_URL } from '../utils/api';
 
 async function fetchRecommendations(brand, month, granularity) {
-  const url = new URL('/api/budget/recommendations', window.location.origin);
+  const url = new URL('/api/budget/recommendations', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('month', month);
   url.searchParams.set('granularity', granularity);
