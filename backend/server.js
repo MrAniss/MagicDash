@@ -296,7 +296,8 @@ app.get('/api/granularity', async (req, res) => {
 // ─── Budget (Sheet budget + Google Ads spend + forecast) ──
 app.get('/api/budget', async (req, res) => {
   try {
-    const { brand = 'Cocooncenter', market = 'ALL', month, compareTo = 'previous_month' } = req.query;
+    const { brand = 'Cocooncenter', market = 'ALL', month, compareTo = 'previous_month', includeComarket } = req.query;
+    const comarket = includeComarket === 'true';
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
     const isPascalCoste = brand === 'Pascal Coste Shopping' || brand === 'PASCAL_COSTE';
@@ -355,10 +356,10 @@ app.get('/api/budget', async (req, res) => {
     const includeParaLaf = isCC && market === 'ALL';
 
     const [currentRows, compRows, paraLafCurrentRows, paraLafCompRows] = await Promise.all([
-      getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false }),
-      getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo, includeComarket: false }),
-      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: false }) : Promise.resolve([]),
-      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: compFrom, to: compTo, includeComarket: false }) : Promise.resolve([]),
+      getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
+      getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo, includeComarket: comarket }),
+      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: comarket }) : Promise.resolve([]),
+      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: compFrom, to: compTo, includeComarket: comarket }) : Promise.resolve([]),
     ]);
 
     // Merge Para Laf rows into CC rows for consolidated view
@@ -677,11 +678,15 @@ app.get('/api/comarket', async (req, res) => {
     const previous = aggregateMetrics(prevComarketRows);
 
     const deltas = {
-      spend_pct: pctChange(current.spend, previous.spend),
-      revenue_pct: pctChange(current.revenue, previous.revenue),
-      roas_pct: pctChange(current.roas, previous.roas),
+      impressions_pct: pctChange(current.impressions, previous.impressions),
+      clicks_pct:      pctChange(current.clicks, previous.clicks),
+      ctr_pct:         pctChange(current.ctr, previous.ctr),
+      spend_pct:       pctChange(current.spend, previous.spend),
+      cpc_pct:         pctChange(current.cpc, previous.cpc),
       conversions_pct: pctChange(current.conversions, previous.conversions),
-      ctr_pct: pctChange(current.ctr, previous.ctr),
+      revenue_pct:     pctChange(current.revenue, previous.revenue),
+      cvr_pct:         pctChange(current.cvr, previous.cvr),
+      roas_pct:        pctChange(current.roas, previous.roas),
     };
 
     // % of total FR
@@ -690,18 +695,28 @@ app.get('/api/comarket', async (req, res) => {
       revenue: totalFR.revenue > 0 ? Math.round((current.revenue / totalFR.revenue) * 10000) / 100 : 0,
     };
 
-    // Campaign breakdown
+    // Campaign breakdown with per-campaign deltas
     const byCampaign = groupBy(comarketRows, r => r.campaign);
+    const prevByCampaign = groupBy(prevComarketRows, r => r.campaign);
     const campaigns = Object.entries(byCampaign).map(([name, campRows]) => {
       const m = aggregateMetrics(campRows);
+      const pm = aggregateMetrics(prevByCampaign[name] || []);
       const firstRow = campRows[0];
-      // Extract partner brand from campaign name
       const partnerBrand = extractComarketBrand(name);
       return {
         campaign_name: name,
         partner_brand: partnerBrand,
         status: firstRow.campaign_status === 'Active' ? 'ENABLED' : 'PAUSED',
         ...m,
+        delta_impressions: pctChange(m.impressions, pm.impressions),
+        delta_clicks:      pctChange(m.clicks, pm.clicks),
+        delta_ctr:         pctChange(m.ctr, pm.ctr),
+        delta_spend:       pctChange(m.spend, pm.spend),
+        delta_cpc:         pctChange(m.cpc, pm.cpc),
+        delta_conversions: pctChange(m.conversions, pm.conversions),
+        delta_revenue:     pctChange(m.revenue, pm.revenue),
+        delta_cvr:         pctChange(m.cvr, pm.cvr),
+        delta_roas:        pctChange(m.roas, pm.roas),
       };
     });
     campaigns.sort((a, b) => b.spend - a.spend);
@@ -784,7 +799,85 @@ function daysBetween(from, to) {
 }
 
 function fmtDate(d) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// ─── Trend YTD ─────────────────────────────────────────
+const ytdCache = new Map();
+const YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
+
+app.get('/api/trend/ytd', async (req, res) => {
+  try {
+    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket } = req.query;
+    const comarket = includeComarket === 'true';
+    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}`;
+
+    const cached = ytdCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < YTD_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const today = new Date();
+    const from = `${today.getFullYear()}-01-01`;
+    const to = fmtDate(today);
+
+    const rows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    const series = buildTrendSeries(rows, granularity);
+
+    const FR_MONTHS = ['jan', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+
+    const result = series.map(item => {
+      const d = new Date(item.date);
+      let period = item.date;
+      let label = item.date;
+
+      if (granularity === 'week') {
+        const weekNum = getISOWeek(d);
+        period = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+        const end = new Date(d);
+        end.setDate(d.getDate() + 6);
+        label = `${d.getDate()} ${FR_MONTHS[d.getMonth()]} – ${end.getDate()} ${FR_MONTHS[end.getMonth()]}`;
+      } else if (granularity === 'month') {
+        period = item.date.slice(0, 7);
+        label = `${FR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      } else {
+        label = `${d.getDate()} ${FR_MONTHS[d.getMonth()]}`;
+      }
+
+      return {
+        period,
+        label,
+        cost:        r2(item.spend),
+        clicks:      item.clicks,
+        impressions: item.impressions,
+        conversions: r2(item.conversions),
+        revenue:     r2(item.revenue),
+        roas:        r2(item.roas),
+        cpc:         r2(item.cpc),
+        cvr:         r2(item.cvr),
+        ctr:         r2(item.ctr),
+        aov:         r2(item.aov),
+      };
+    });
+
+    ytdCache.set(cacheKey, { data: result, ts: Date.now() });
+    res.json(result);
+  } catch (err) {
+    console.error('Trend YTD error:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function getISOWeek(d) {
+  const date = new Date(d.getTime());
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
 }
 
 // ─── Budget Daily Spend YTD ────────────────────────────
@@ -793,9 +886,10 @@ const DAILY_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/budget/daily-spend', async (req, res) => {
   try {
-    const { brand = 'Cocooncenter', market = 'ALL', year } = req.query;
+    const { brand = 'Cocooncenter', market = 'ALL', year, includeComarket } = req.query;
+    const comarket = includeComarket === 'true';
     const targetYear = parseInt(year || new Date().getFullYear(), 10);
-    const cacheKey = `daily-spend|${brand}|${market}|${targetYear}`;
+    const cacheKey = `daily-spend|${brand}|${market}|${targetYear}|${comarket}`;
 
     const cached = dailySpendCache.get(cacheKey);
     if (cached && (Date.now() - cached.ts) < DAILY_CACHE_TTL) {
@@ -823,9 +917,9 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     const [rows, paraLafRows] = await Promise.all([
       isParaLafMarket
         ? Promise.resolve([])
-        : getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: false }),
+        : getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
       (isCC && (market === 'ALL' || isParaLafMarket))
-        ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: false })
+        ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: comarket })
         : Promise.resolve([]),
     ]);
 

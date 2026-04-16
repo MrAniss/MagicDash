@@ -9,8 +9,6 @@ const GRAN_OPTIONS = [
   { key: 'month', label: 'Mois' },
 ];
 
-const PAGE_SIZE = 10;
-
 function deltaColor(v) {
   if (v > 0) return 'text-success';
   if (v < 0) return 'text-danger';
@@ -53,7 +51,6 @@ function Skeleton() {
 
 export default function GranularityTable({ filters }) {
   const [gran, setGran] = useState('day');
-  const [page, setPage] = useState(0);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
   const [copied, setCopied] = useState(false);
@@ -77,9 +74,6 @@ export default function GranularityTable({ filters }) {
       return sortDir === 'asc' ? va - vb : vb - va;
     });
   }
-
-  const totalPages = gran === 'day' ? Math.ceil(rows.length / PAGE_SIZE) : 1;
-  const displayRows = gran === 'day' ? rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : rows;
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -124,7 +118,7 @@ export default function GranularityTable({ filters }) {
           />
           <div className="flex bg-bg-page rounded-inner p-0.5">
             {GRAN_OPTIONS.map(g => (
-              <button key={g.key} onClick={() => { setGran(g.key); setPage(0); setSortCol(null); }}
+              <button key={g.key} onClick={() => { setGran(g.key); setSortCol(null); }}
                 className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${gran === g.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}>
                 {g.label}
               </button>
@@ -132,13 +126,13 @@ export default function GranularityTable({ filters }) {
           </div>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[480px]">
         <table className="w-full text-[13px]">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-bg-page border-b-2 border-border">
               {COLS.map((col, i) => (
                 <th key={`${col.key}-${i}`} onClick={() => handleSort(col.key)}
-                  className={`px-2.5 py-3 text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer hover:text-navy transition-colors select-none whitespace-nowrap ${col.align === 'left' ? 'text-left' : 'text-right'}`}>
+                  className={`px-2.5 py-3 text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer hover:text-navy transition-colors select-none whitespace-nowrap bg-bg-page ${col.align === 'left' ? 'text-left' : 'text-right'}`}>
                   {col.label}
                   {sortCol === col.key && <span className="ml-0.5">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>}
                 </th>
@@ -146,7 +140,7 @@ export default function GranularityTable({ filters }) {
             </tr>
           </thead>
           <tbody>
-            {displayRows.map((row, i) => (
+            {rows.map((row, i) => (
               <tr key={i} className={`border-b border-border hover:bg-navy hover:text-white transition-colors group ${i % 2 === 1 ? 'bg-[#FAFBFD]' : ''}`}>
                 {COLS.map((col, ci) => {
                   const val = row[col.key];
@@ -162,17 +156,6 @@ export default function GranularityTable({ filters }) {
           </tbody>
         </table>
       </div>
-      {gran === 'day' && totalPages > 1 && (
-        <div className="px-6 py-3 flex items-center justify-between border-t border-border">
-          <span className="text-[11px] text-navy-muted">Page {page + 1} / {totalPages}</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-              className="px-3 py-1 text-xs font-medium rounded-inner bg-bg-page text-navy-muted hover:text-navy disabled:opacity-30 transition-colors">Prec.</button>
-            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-              className="px-3 py-1 text-xs font-medium rounded-inner bg-bg-page text-navy-muted hover:text-navy disabled:opacity-30 transition-colors">Suiv.</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

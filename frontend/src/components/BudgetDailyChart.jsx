@@ -7,6 +7,7 @@ import {
 import { fEur } from '../utils/formatters';
 import { marketName } from '../utils/flags';
 import { API_URL } from '../utils/api';
+import { useComarket } from '../contexts/ComarketContext';
 
 // Market colors kept for potential future use
 const _MARKET_COLORS = [
@@ -37,11 +38,12 @@ function getYears() {
   return [current, current - 1, current - 2];
 }
 
-async function fetchDailySpend(brand, market, year) {
+async function fetchDailySpend(brand, market, year, includeComarket) {
   const url = new URL('/api/budget/daily-spend', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('year', year);
+  url.searchParams.set('includeComarket', includeComarket);
   const res = await fetch(url);
   if (!res.ok) throw new Error('Daily spend API error');
   return res.json();
@@ -111,10 +113,11 @@ export default function BudgetDailyChart() {
   const [year, setYear] = useState(currentYear);
   const years = getYears();
   const availableMarkets = getMarketsForBrand(brand);
+  const { includeComarket } = useComarket();
 
   const { data: rawData = [], isLoading } = useQuery({
-    queryKey: ['budget-daily-spend', brand, market, year],
-    queryFn: () => fetchDailySpend(brand, market, year),
+    queryKey: ['budget-daily-spend', brand, market, year, includeComarket],
+    queryFn: () => fetchDailySpend(brand, market, year, includeComarket),
     staleTime: 60 * 60 * 1000,
     placeholderData: (prev) => prev,
   });

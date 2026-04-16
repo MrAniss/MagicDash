@@ -5,6 +5,7 @@ import { fEur, fNum, fROAS, fAov, fDelta } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
 import BudgetDailyChart from './BudgetDailyChart';
 import { API_URL } from '../utils/api';
+import { useComarket } from '../contexts/ComarketContext';
 
 const BRAND_OPTIONS = [
   { key: 'Cocooncenter', label: 'Cocooncenter' },
@@ -24,12 +25,13 @@ function getMarketsForBrand(brand) {
   return PCS_MARKETS;
 }
 
-async function fetchBudget(brand, market, month, compareTo) {
+async function fetchBudget(brand, market, month, compareTo, includeComarket) {
   const url = new URL('/api/budget', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('month', month);
   url.searchParams.set('compareTo', compareTo);
+  url.searchParams.set('includeComarket', includeComarket);
   const res = await fetch(url);
   if (!res.ok) throw new Error('Budget API error');
   return res.json();
@@ -136,6 +138,7 @@ export default function BudgetPacing({ filters }) {
   const [brand, setBrand] = useState('Cocooncenter');
   const [market, setMarket] = useState('ALL');
   const [compareTo, setCompareTo] = useState(() => localStorage.getItem('dhygietal_budget_compare') || 'previous_month');
+  const { includeComarket } = useComarket();
 
   const availableMarkets = getMarketsForBrand(brand);
 
@@ -145,8 +148,8 @@ export default function BudgetPacing({ filters }) {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['budget', brand, market, month, compareTo],
-    queryFn: () => fetchBudget(brand, market, month, compareTo),
+    queryKey: ['budget', brand, market, month, compareTo, includeComarket],
+    queryFn: () => fetchBudget(brand, market, month, compareTo, includeComarket),
     enabled: !!month,
     placeholderData: (prev) => prev,
   });
@@ -184,7 +187,7 @@ export default function BudgetPacing({ filters }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-navy">Budget & Pacing</h2>
-          <span className="text-[11px] font-medium px-2.5 py-1 rounded-[6px] bg-success-bg text-success">Comarket exclu</span>
+          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-[6px] ${includeComarket ? 'bg-blue-50 text-blue-600' : 'bg-success-bg text-success'}`}>{includeComarket ? 'Comarket inclus' : 'Comarket exclu'}</span>
         </div>
         <div className="flex items-center gap-2">
           <select value={brand} onChange={e => handleBrandChange(e.target.value)}

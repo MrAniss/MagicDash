@@ -106,13 +106,13 @@ export default function MarketTable({ data, isLoading }) {
           copied={copied}
         />
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[480px]">
         <table className="w-full text-[13px]">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-bg-page border-b-2 border-border">
               {COLUMNS.map(col => (
                 <th key={col.key} onClick={() => handleSort(col.key)}
-                  className={`px-3 py-3 text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer hover:text-navy transition-colors select-none whitespace-nowrap ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
+                  className={`px-3 py-3 text-[11px] font-semibold text-navy-muted uppercase tracking-[0.06em] cursor-pointer hover:text-navy transition-colors select-none whitespace-nowrap bg-bg-page ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
                   {col.label}
                   {sortCol === col.key && <span className="ml-1">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>}
                 </th>

@@ -61,6 +61,16 @@ export function useComarketData({ from, to, compareTo }) {
   });
 }
 
+export function useTrendYtd({ brand, market, granularity }) {
+  const { includeComarket } = useComarket();
+  return useQuery({
+    queryKey: ['trendYtd', brand, market, granularity, includeComarket],
+    queryFn: () => fetchApi('/api/trend/ytd', { brand, market, granularity, includeComarket }),
+    staleTime: 60 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useAuthStatus() {
   return useQuery({
     queryKey: ['authStatus'],

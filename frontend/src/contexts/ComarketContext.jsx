@@ -3,7 +3,7 @@ import { createContext, useContext, useState } from 'react';
 const ComarketContext = createContext();
 
 export function ComarketProvider({ children }) {
-  const [includeComarket, setIncludeComarket] = useState(false);
+  const [includeComarket, setIncludeComarket] = useState(true);
   return (
     <ComarketContext.Provider value={{ includeComarket, setIncludeComarket }}>
       {children}

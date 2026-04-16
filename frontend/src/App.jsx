@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import KpiCards from './components/KpiCards';
+import CostKpiChart from './components/CostKpiChart';
 import CvrAovChart from './components/CvrAovChart';
 import TrendChart from './components/TrendChart';
 import GranularityTable from './components/GranularityTable';
@@ -68,6 +69,7 @@ export default function App() {
         {activeView === 'dashboard' && (
           <>
             <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
+            <CostKpiChart filters={filters} />
             <CvrAovChart filters={filters} />
             <TrendChart filters={filters} />
             <GranularityTable filters={filters} />
