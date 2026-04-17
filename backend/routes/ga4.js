@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams, getGA4Streams, getGA4Hostnames } from '../ga4Client.js';
+import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams, getGA4Streams, getGA4Hostnames, getGA4BounceRateYtd, getGA4CvrAovYtd } from '../ga4Client.js';
 
 const router = express.Router();
 
@@ -98,6 +98,32 @@ router.get('/channels', async (req, res) => {
     res.json(channels);
   } catch (err) {
     console.error('GA4 Channels error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/ga4/bounce-rate-ytd ─────────────────────
+router.get('/bounce-rate-ytd', async (req, res) => {
+  try {
+    await ensureStreams();
+    const { brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' } = req.query;
+    const result = await getGA4BounceRateYtd({ brand, market, source, granularity });
+    res.json(result);
+  } catch (err) {
+    console.error('GA4 BounceRateYtd error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/ga4/cvr-aov-ytd ──────────────────────────
+router.get('/cvr-aov-ytd', async (req, res) => {
+  try {
+    await ensureStreams();
+    const { brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' } = req.query;
+    const result = await getGA4CvrAovYtd({ brand, market, source, granularity });
+    res.json(result);
+  } catch (err) {
+    console.error('GA4 CvrAovYtd error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

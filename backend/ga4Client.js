@@ -496,6 +496,229 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
   return result;
 }
 
+// ─── GET /api/ga4/bounce-rate-ytd ─────────────────────
+
+export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' }) {
+  const year = new Date().getFullYear();
+  const from = `${year}-01-01`;
+  const to   = new Date().toISOString().slice(0, 10);
+
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_bounce_ytd_${brand}_${market}_${filterTag}_${source}_${granularity}_${year}`;
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const properties = resolvePropertyIds(brand);
+  const seaFilter  = source === 'seo' ? buildSourceMediumFilter('google / cpc') : null;
+
+  let allRows = [];
+  for (const [bKey, propId] of properties) {
+    const filter = combineFilters(buildStreamFilter(bKey, market), seaFilter);
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['date'],
+      metrics: ['bounceRate', 'sessions'],
+      dimensionFilter: filter,
+    }).catch(err => {
+      console.error(`GA4 bounce rate query error (${bKey}):`, err.message);
+      return [];
+    });
+    allRows.push(...rows);
+  }
+
+  // Aggregate daily rows across properties (weighted bounce rate)
+  const byDay = {};
+  for (const row of allRows) {
+    if (!byDay[row.date]) byDay[row.date] = { bounced: 0, sessions: 0 };
+    byDay[row.date].bounced  += row.bounceRate * row.sessions;
+    byDay[row.date].sessions += row.sessions;
+  }
+
+  // Build series based on granularity
+  let series;
+  if (granularity === 'day') {
+    series = Object.entries(byDay)
+      .map(([date, d]) => ({
+        date,
+        bounce_rate: d.sessions > 0 ? r2(d.bounced / d.sessions) : 0,
+        sessions: Math.round(d.sessions),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } else {
+    // Default: week
+    const byWeek = {};
+    for (const [date, d] of Object.entries(byDay)) {
+      const wk = granularityKey(date, 'week');
+      if (!byWeek[wk]) byWeek[wk] = { bounced: 0, sessions: 0 };
+      byWeek[wk].bounced  += d.bounced;
+      byWeek[wk].sessions += d.sessions;
+    }
+    series = Object.entries(byWeek)
+      .map(([date, d]) => ({
+        date,
+        bounce_rate: d.sessions > 0 ? r2(d.bounced / d.sessions) : 0,
+        sessions: Math.round(d.sessions),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Weighted avg over entire period
+  const totW = series.reduce((s, d) => s + d.bounce_rate * d.sessions, 0);
+  const totS = series.reduce((s, d) => s + d.sessions, 0);
+  const avg  = totS > 0 ? r2(totW / totS) : 0;
+
+  // Trend: last 14 days vs previous 14 days using daily data
+  const today = new Date();
+  const d14   = new Date(today); d14.setDate(today.getDate() - 14);
+  const d28   = new Date(today); d28.setDate(today.getDate() - 28);
+  const fmt   = d => d.toISOString().slice(0, 10);
+
+  function weightedAvg(arr) {
+    const s = arr.reduce((a, d) => a + d.sessions, 0);
+    if (s === 0) return 0;
+    return arr.reduce((a, d) => a + d.bounce_rate * d.sessions, 0) / s;
+  }
+
+  const dayEntries = Object.entries(byDay).map(([date, d]) => ({
+    date,
+    bounce_rate: d.sessions > 0 ? d.bounced / d.sessions : 0,
+    sessions: d.sessions,
+  }));
+  const last14  = dayEntries.filter(d => d.date >= fmt(d14));
+  const prev14  = dayEntries.filter(d => d.date >= fmt(d28) && d.date < fmt(d14));
+  const avgL14  = weightedAvg(last14);
+  const avgP14  = weightedAvg(prev14);
+  const trend     = avgL14 > avgP14 ? 'UP' : 'DOWN';
+  const delta_pct = avgP14 > 0 ? r2(((avgL14 - avgP14) / avgP14) * 100) : 0;
+
+  const result = { data: series, avg, trend, delta_pct };
+  setCache(cacheKey, result);
+  return result;
+}
+
+// ─── GET /api/ga4/cvr-aov-ytd ──────────────────────────
+
+export async function getGA4CvrAovYtd({ brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' }) {
+  const year = new Date().getFullYear();
+  const from = `${year}-01-01`;
+  const to   = new Date().toISOString().slice(0, 10);
+
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_cvr_aov_ytd_${brand}_${market}_${filterTag}_${source}_${granularity}_${year}`;
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const properties = resolvePropertyIds(brand);
+  const seaFilter  = source === 'seo' ? buildSourceMediumFilter('google / cpc') : null;
+
+  let allRows = [];
+  for (const [bKey, propId] of properties) {
+    const filter = combineFilters(buildStreamFilter(bKey, market), seaFilter);
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['date'],
+      metrics: ['sessions', 'transactions', 'totalRevenue'],
+      dimensionFilter: filter,
+    }).catch(err => {
+      console.error(`GA4 CVR/AOV query error (${bKey}):`, err.message);
+      return [];
+    });
+    allRows.push(...rows);
+  }
+
+  // Aggregate daily
+  const byDay = {};
+  for (const row of allRows) {
+    if (!byDay[row.date]) byDay[row.date] = { sessions: 0, transactions: 0, revenue: 0 };
+    byDay[row.date].sessions    += row.sessions;
+    byDay[row.date].transactions += row.transactions;
+    byDay[row.date].revenue      += row.totalRevenue;
+  }
+
+  // Build series based on granularity
+  let series;
+  if (granularity === 'day') {
+    series = Object.entries(byDay)
+      .map(([date, d]) => ({
+        date,
+        cvr: d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0,
+        aov: d.transactions > 0 ? r2(d.revenue / d.transactions) : 0,
+        sessions: Math.round(d.sessions),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } else {
+    // Week
+    const byWeek = {};
+    for (const [date, d] of Object.entries(byDay)) {
+      const wk = granularityKey(date, 'week');
+      if (!byWeek[wk]) byWeek[wk] = { sessions: 0, transactions: 0, revenue: 0 };
+      byWeek[wk].sessions    += d.sessions;
+      byWeek[wk].transactions += d.transactions;
+      byWeek[wk].revenue      += d.revenue;
+    }
+    series = Object.entries(byWeek)
+      .map(([date, d]) => ({
+        date,
+        cvr: d.sessions > 0 ? r2((d.transactions / d.sessions) * 100) : 0,
+        aov: d.transactions > 0 ? r2(d.revenue / d.transactions) : 0,
+        sessions: Math.round(d.sessions),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Weighted averages
+  function weightedAvg(arr, field) {
+    const s = arr.reduce((a, d) => a + d.sessions, 0);
+    if (s === 0) return 0;
+    if (field === 'cvr') {
+      const txns = arr.reduce((a, d) => a + d.transactions, 0);
+      return r2((txns / s) * 100);
+    } // aov
+    const rev = arr.reduce((a, d) => a + d.revenue, 0);
+    return r2(rev / arr.reduce((a, d) => a + d.transactions, 0));
+  }
+
+  const dayEntries = Object.entries(byDay).map(([date, d]) => ({
+    date,
+    sessions: d.sessions,
+    transactions: d.transactions,
+    revenue: d.revenue,
+  }));
+
+  const cvrAvg = weightedAvg(dayEntries, 'cvr');
+  const aovAvg = weightedAvg(dayEntries, 'aov');
+
+  // Trend for both metrics
+  const today = new Date();
+  const d14   = new Date(today); d14.setDate(today.getDate() - 14);
+  const d28   = new Date(today); d28.setDate(today.getDate() - 28);
+  const fmt   = d => d.toISOString().slice(0, 10);
+  const last14 = dayEntries.filter(d => d.date >= fmt(d14));
+  const prev14 = dayEntries.filter(d => d.date >= fmt(d28) && d.date < fmt(d14));
+
+  const cvrLast = weightedAvg(last14, 'cvr');
+  const cvrPrev = weightedAvg(prev14, 'cvr');
+  const cvrTrend   = cvrLast > cvrPrev ? 'UP' : 'DOWN';
+  const cvrDelta   = cvrPrev > 0 ? r2(((cvrLast - cvrPrev) / cvrPrev) * 100) : 0;
+
+  const aovLast = weightedAvg(last14, 'aov');
+  const aovPrev = weightedAvg(prev14, 'aov');
+  const aovTrend   = aovLast > aovPrev ? 'UP' : 'DOWN';
+  const aovDelta   = aovPrev > 0 ? r2(((aovLast - aovPrev) / aovPrev) * 100) : 0;
+
+  const result = {
+    data: series,
+    cvr: { avg: cvrAvg, trend: cvrTrend, delta_pct: cvrDelta },
+    aov: { avg: aovAvg, trend: aovTrend, delta_pct: aovDelta },
+  };
+  setCache(cacheKey, result);
+  return result;
+}
+
 // ─── Helpers ───────────────────────────────────────────
 
 function aggregateGA4Rows(rows) {

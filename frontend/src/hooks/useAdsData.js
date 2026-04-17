@@ -116,3 +116,19 @@ export function useGA4Channels({ brand, market, from, to, compareTo, sourceMediu
   });
 }
 
+export function useGA4BounceRateYtd({ brand, market, source, granularity = 'week' }) {
+  return useQuery({
+    queryKey: ['ga4BounceRateYtd', brand, market, source, granularity],
+    queryFn: () => fetchApi('/api/ga4/bounce-rate-ytd', { brand, market, source, granularity }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useGA4CvrAovYtd({ brand, market, source, granularity = 'week' }) {
+  return useQuery({
+    queryKey: ['ga4CvrAovYtd', brand, market, source, granularity],
+    queryFn: () => fetchApi('/api/ga4/cvr-aov-ytd', { brand, market, source, granularity }),
+    placeholderData: (prev) => prev,
+  });
+}
+

@@ -3,6 +3,8 @@ import React from 'react';
 import { ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useGA4Kpis, useGA4Trend, useGA4Channels, useKpis } from '../hooks/useAdsData';
 import { fEur, fNum, fPct, fDelta, fAov, fEurCompact } from '../utils/formatters';
+import BounceRateChart from './BounceRateChart';
+import CvrAovYtdChart from './CvrAovYtdChart';
 
 // ─── KPI config for GA4 scorecards ─────────────────────
 const GA4_KPI_CONFIG = [
@@ -529,17 +531,23 @@ export default function GA4View({ filters }) {
         sourceMedium={sourceMedium}
       />
 
-      {/* Section 2: GA4 vs Google Ads — toujours google/cpc */}
+      {/* Section 2: Bounce Rate YTD */}
+      <BounceRateChart filters={filters} />
+
+      {/* Section 3: CVR & AOV YTD */}
+      <CvrAovYtdChart filters={filters} />
+
+      {/* Section 4: GA4 vs Google Ads Reconciliation */}
       <ReconciliationTable
         ga4Data={ga4KpisCpc.data}
         adsData={adsKpis.data}
         isLoading={ga4KpisCpc.isLoading || adsKpis.isLoading}
       />
 
-      {/* Section 3: Channel Breakdown */}
+      {/* Section 5: Channel Breakdown */}
       <ChannelBreakdown data={ga4Channels.data} isLoading={ga4Channels.isLoading} />
 
-      {/* Section 4: CVR & AOV Trend */}
+      {/* Section 6: CVR & AOV Detailed Trend (Day/Week/Month) */}
       <GA4CvrAovTrend filters={ga4Filters} />
     </div>
   );
