@@ -561,6 +561,55 @@ export async function getShoppingData(brand, market, from, to) {
 
 export function clearShoppingCache() { shoppingCache.clear(); }
 
+// ─── Scoring (CC FR only) ────────────────────────────────
+
+const scoringCache = new Map();
+const SCORING_CACHE_TTL = 30 * 60 * 1000;
+
+export async function getScoringData(from, to) {
+  const cacheKey = `scoring|${from}|${to}`;
+  const entry = scoringCache.get(cacheKey);
+  if (entry && (Date.now() - entry.ts) < SCORING_CACHE_TTL) return entry.data;
+  scoringCache.delete(cacheKey);
+
+  const refreshToken = getRefreshToken();
+  const api = getApi();
+  const ccFr = BRANDS.COCOONCENTER.accounts.find(a => a.market === 'FR');
+
+  const gaql = `SELECT
+    segments.product_item_id,
+    segments.product_custom_attribute4,
+    metrics.cost_micros,
+    metrics.conversions_value,
+    metrics.impressions,
+    metrics.clicks,
+    metrics.conversions
+  FROM shopping_performance_view
+  WHERE segments.date BETWEEN '${from}' AND '${to}'`;
+
+  const customer = getCustomer(api, ccFr.id, MCC_ID, refreshToken);
+  const results = await customer.query(gaql).catch(e => {
+    const msg = e?.message || e?.details?.[0]?.message || JSON.stringify(e);
+    console.error('Scoring query error:', msg);
+    return [];
+  });
+
+  const data = results.map(r => ({
+    item_id:  String(r.segments?.product_item_id || ''),
+    scoring:  String(r.segments?.product_custom_attribute4 || '').toUpperCase(),
+    cost:     Number(r.metrics?.cost_micros || 0) / 1e6,
+    revenue:  Number(r.metrics?.conversions_value || 0),
+    impressions: Number(r.metrics?.impressions || 0),
+    clicks:   Number(r.metrics?.clicks || 0),
+    conversions: Number(r.metrics?.conversions || 0),
+  }));
+
+  scoringCache.set(cacheKey, { data, ts: Date.now() });
+  return data;
+}
+
+export function clearScoringCache() { scoringCache.clear(); }
+
 export async function getComarketRows({ from, to }) {
   const refreshToken = getRefreshToken();
   const api = getApi();

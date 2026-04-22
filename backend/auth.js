@@ -10,6 +10,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
   'https://www.googleapis.com/auth/analytics.readonly',
   'https://www.googleapis.com/auth/content',
+  'https://www.googleapis.com/auth/webmasters.readonly',
 ];
 const REDIRECT_URI = 'http://localhost:3001/auth/callback';
 

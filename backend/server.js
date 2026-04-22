@@ -8,7 +8,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 import express from 'express';
 import cors from 'cors';
 import { authRouter, isAuthenticated } from './auth.js';
-import { getRows, getComarketRows, clearCache } from './googleAdsClient.js';
+import { getRows, getComarketRows, clearCache, clearScoringCache } from './googleAdsClient.js';
 import { generateRecommendations } from './services/recommendationEngine.js';
 import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
@@ -22,6 +22,8 @@ import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
 import assistantRouter from './routes/assistant.js';
 import assetsRouter from './routes/assets.js';
+import brandRouter from './routes/brand.js';
+import { clearGscCache } from './searchConsoleClient.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +50,7 @@ app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/assets', assetsRouter);
+app.use('/api/brand', brandRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
@@ -56,9 +59,11 @@ app.get('/api/mode', (_req, res) => res.json({
 
 app.post('/api/cache/clear', (_req, res) => {
   clearCache();
+  clearScoringCache();
   clearBudgetCache();
   clearGA4Cache();
   clearMcCache();
+  clearGscCache();
   res.json({ ok: true });
 });
 

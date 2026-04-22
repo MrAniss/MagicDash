@@ -31,8 +31,9 @@ const VIEW_TABS = [
   { key: 'comarket',        label: 'Comarket' },
   // { key: 'competition',  label: 'Concurrence' },   // hidden — en attente
   { key: 'shopping',        label: 'Shopping' },
+  // { key: 'brand',        label: 'Brand' },          // hidden
   // { key: 'assistant',    label: 'Assistant' },      // hidden — quota Gemini API
-  { key: 'assets',         label: 'Assets' },
+  // { key: 'assets',       label: 'Assets' },         // hidden
 ];
 
 const PRESETS = [
@@ -155,7 +156,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     <header className="sticky top-0 z-50 bg-white border-b border-border-strong shadow-header">
       <div className="max-w-[1600px] mx-auto px-6 py-3">
         {/* Top row */}
-        <div className={`flex items-center justify-between ${!['budget','competition','shopping','assistant','assets'].includes(activeView) ? 'mb-3' : ''}`}>
+        <div className={`flex items-center justify-between ${!['budget','competition','shopping','assistant','assets','brand'].includes(activeView) ? 'mb-3' : ''}`}>
           <div className="flex items-center gap-3">
             <img
               src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
@@ -189,7 +190,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         </div>
 
         {/* Bottom row — hidden on views with own controls */}
-        {!['budget','competition','shopping','assistant','assets'].includes(activeView) && (
+        {!['budget','competition','shopping','assistant','assets','brand'].includes(activeView) && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
             <div className="flex items-center gap-2">
@@ -271,7 +272,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         )}
 
         {/* Comarket warning banner */}
-        {!['budget','competition','shopping','assistant','assets'].includes(activeView) && includeComarket && (
+        {!['budget','competition','shopping','assistant','assets','brand'].includes(activeView) && includeComarket && (
           <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
             <span>&#9888;</span>
             <span><strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees par les partenaires.</span>

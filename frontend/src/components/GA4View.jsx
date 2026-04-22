@@ -5,6 +5,7 @@ import { useGA4Kpis, useGA4Trend, useGA4Channels, useKpis } from '../hooks/useAd
 import { fEur, fNum, fPct, fDelta, fAov, fEurCompact } from '../utils/formatters';
 import BounceRateChart from './BounceRateChart';
 import CvrAovYtdChart from './CvrAovYtdChart';
+import FunnelChart from './FunnelChart';
 
 // ─── KPI config for GA4 scorecards ─────────────────────
 const GA4_KPI_CONFIG = [
@@ -534,7 +535,10 @@ export default function GA4View({ filters }) {
       {/* Section 2: Bounce Rate YTD */}
       <BounceRateChart filters={filters} />
 
-      {/* Section 3: CVR & AOV YTD */}
+      {/* Section 3: Tunnel de conversion YTD */}
+      <FunnelChart filters={filters} />
+
+      {/* Section 4: CVR & AOV YTD */}
       <CvrAovYtdChart filters={filters} />
 
       {/* Section 4: GA4 vs Google Ads Reconciliation */}

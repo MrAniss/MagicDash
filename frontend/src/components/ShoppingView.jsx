@@ -1082,6 +1082,7 @@ export default function ShoppingView() {
         onSegmentChange={handleSegment}
       />
 
+
       {/* ── Section 3 : Brands ── */}
       <SectionCard title="Top marques produits">
         <BrandsTable

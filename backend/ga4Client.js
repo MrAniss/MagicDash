@@ -1,6 +1,7 @@
 import { getOAuth2Client, getValidAccessToken } from './auth.js';
 import { GA4_PROPERTIES, BRAND_KEY_TO_PROPERTY } from './config/ga4Properties.js';
 import { GA4_STREAMS, setGA4Streams } from './config/ga4Streams.js';
+import { getFunnelEvents } from './config/ga4FunnelEvents.js';
 
 // ─── Cache ─────────────────────────────────────────────
 const cache = new Map();
@@ -717,6 +718,122 @@ export async function getGA4CvrAovYtd({ brand = 'ALL', market = 'ALL', source = 
   };
   setCache(cacheKey, result);
   return result;
+}
+
+// ─── Funnel YTD ────────────────────────────────────────
+
+const MONTHS_FR = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+
+function makeFunnelLabel(dateStr, gran) {
+  if (gran === 'day') {
+    const d = new Date(dateStr + 'T00:00:00');
+    return `${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+  }
+  const mon = new Date(dateStr + 'T00:00:00');
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  if (mon.getMonth() === sun.getMonth()) {
+    return `${mon.getDate()}-${sun.getDate()} ${MONTHS_FR[mon.getMonth()]}`;
+  }
+  return `${mon.getDate()} ${MONTHS_FR[mon.getMonth()]} - ${sun.getDate()} ${MONTHS_FR[sun.getMonth()]}`;
+}
+
+function makePeriodId(dateStr, gran) {
+  if (gran === 'day') return dateStr;
+  const d = new Date(dateStr + 'T00:00:00');
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startOfW1 = new Date(jan4);
+  startOfW1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const wn = Math.round((d - startOfW1) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  return `${d.getFullYear()}-W${String(wn).padStart(2, '0')}`;
+}
+
+export async function getGA4FunnelYtd({ brand = 'ALL', market = 'ALL', granularity = 'week' }) {
+  const year = new Date().getFullYear();
+  const from = `${year}-01-01`;
+  const to   = new Date().toISOString().slice(0, 10);
+
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_funnel_ytd_${brand}_${market}_${filterTag}_${granularity}_${year}`;
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const properties  = resolvePropertyIds(brand);
+  const funnelSteps = getFunnelEvents(brand !== 'ALL' ? brand : null);
+  const eventNames  = funnelSteps.map(s => s.eventName);
+
+  let allRows = [];
+  for (const [bKey, propId] of properties) {
+    const streamFilter = buildStreamFilter(bKey, market);
+    const eventFilter  = {
+      filter: {
+        fieldName: 'eventName',
+        inListFilter: { values: eventNames },
+      },
+    };
+    const filter = combineFilters(streamFilter, eventFilter);
+
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['date', 'eventName'],
+      metrics: ['eventCount'],
+      dimensionFilter: filter,
+    }).catch(err => {
+      console.error(`GA4 funnel query error (${bKey}):`, err.message);
+      return [];
+    });
+    allRows.push(...rows);
+  }
+
+  // Aggregate by day + step key
+  const byDay = {};
+  for (const row of allRows) {
+    const step = funnelSteps.find(s => s.eventName === row.eventName);
+    if (!step) continue;
+    if (!byDay[row.date]) byDay[row.date] = {};
+    byDay[row.date][step.key] = (byDay[row.date][step.key] || 0) + row.eventCount;
+  }
+
+  // Group by granularity
+  const periodMap = {};
+  if (granularity === 'day') {
+    Object.assign(periodMap, byDay);
+  } else {
+    for (const [date, events] of Object.entries(byDay)) {
+      const wk = granularityKey(date, 'week');
+      if (!periodMap[wk]) periodMap[wk] = {};
+      for (const [k, v] of Object.entries(events)) {
+        periodMap[wk][k] = (periodMap[wk][k] || 0) + v;
+      }
+    }
+  }
+
+  const series = Object.entries(periodMap)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([dateStr, steps]) => {
+      const cart     = steps.add_to_cart       || 0;
+      const checkout = steps.begin_checkout     || 0;
+      const shipping = steps.add_shipping_info  || 0;
+      const payment  = steps.add_payment_info   || 0;
+      const purchase = steps.purchase           || 0;
+      return {
+        period: makePeriodId(dateStr, granularity),
+        label:  makeFunnelLabel(dateStr, granularity),
+        steps:  { add_to_cart: cart, begin_checkout: checkout, add_shipping_info: shipping, add_payment_info: payment, purchase },
+        completion_rates: {
+          cart_to_checkout:     cart     > 0 ? r2((checkout / cart)     * 100) : 0,
+          checkout_to_shipping: checkout > 0 ? r2((shipping / checkout) * 100) : 0,
+          shipping_to_payment:  shipping > 0 ? r2((payment  / shipping) * 100) : 0,
+          payment_to_purchase:  payment  > 0 ? r2((purchase / payment)  * 100) : 0,
+          cart_to_purchase:     cart     > 0 ? r2((purchase / cart)     * 100) : 0,
+        },
+      };
+    });
+
+  setCache(cacheKey, series);
+  return series;
 }
 
 // ─── Helpers ───────────────────────────────────────────

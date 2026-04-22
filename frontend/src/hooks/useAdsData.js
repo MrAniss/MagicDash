@@ -124,10 +124,38 @@ export function useGA4BounceRateYtd({ brand, market, source, granularity = 'week
   });
 }
 
+// ─── Brand hooks ───────────────────────────────────────
+
+export function useBrandOverview({ brand, from, to }) {
+  return useQuery({
+    queryKey: ['brandOverview', brand, from, to],
+    queryFn: () => fetchApi('/api/brand/overview', { brand, from, to }),
+    enabled: !!brand && !!from && !!to,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBrandTrend({ brand, from, to, granularity = 'day' }) {
+  return useQuery({
+    queryKey: ['brandTrend', brand, from, to, granularity],
+    queryFn: () => fetchApi('/api/brand/trend', { brand, from, to, granularity }),
+    enabled: !!brand && !!from && !!to,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useGA4CvrAovYtd({ brand, market, source, granularity = 'week' }) {
   return useQuery({
     queryKey: ['ga4CvrAovYtd', brand, market, source, granularity],
     queryFn: () => fetchApi('/api/ga4/cvr-aov-ytd', { brand, market, source, granularity }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useGA4FunnelYtd({ brand, market, granularity = 'week' }) {
+  return useQuery({
+    queryKey: ['ga4FunnelYtd', brand, market, granularity],
+    queryFn: () => fetchApi('/api/ga4/funnel-ytd', { brand, market, granularity }),
     placeholderData: (prev) => prev,
   });
 }

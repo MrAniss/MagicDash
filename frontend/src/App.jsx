@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import KpiCards from './components/KpiCards';
 import CostKpiChart from './components/CostKpiChart';
-import CvrAovChart from './components/CvrAovChart';
-import TrendChart from './components/TrendChart';
 import GranularityTable from './components/GranularityTable';
 import MarketTable from './components/MarketTable';
 import BudgetPacing from './components/BudgetPacing';
@@ -13,7 +11,7 @@ import GA4View from './components/GA4View';
 import CompetitionView from './components/CompetitionView';
 import ShoppingView from './components/ShoppingView';
 import AssistantView from './components/AssistantView';
-import AssetsView from './components/AssetsView';
+import ShoppingScoringCharts from './components/ShoppingScoringCharts';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
@@ -70,10 +68,9 @@ export default function App() {
           <>
             <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
             <CostKpiChart filters={filters} />
-            <CvrAovChart filters={filters} />
-            <TrendChart filters={filters} />
             <GranularityTable filters={filters} />
             <MarketTable data={markets.data} isLoading={markets.isLoading} />
+            <ShoppingScoringCharts brand={filters.brand} market={filters.market} from={filters.from} to={filters.to} />
           </>
         )}
 
@@ -105,9 +102,6 @@ export default function App() {
           <AssistantView />
         )}
 
-        {activeView === 'assets' && (
-          <AssetsView />
-        )}
       </main>
 
       <footer className="mt-auto py-5 text-center border-t border-border">

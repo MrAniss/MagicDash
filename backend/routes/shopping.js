@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../auth.js';
-import { getShoppingData } from '../googleAdsClient.js';
+import { getShoppingData, getScoringData } from '../googleAdsClient.js';
 import { getPriceMap, getPriceCompetitivenessData } from '../services/merchantCenterClient.js';
+import { POAS_BREAKEVEN } from '../config/poasThresholds.js';
 
 const router = Router();
 
@@ -448,6 +449,83 @@ router.get('/zombies', async (req, res) => {
     res.json(zombies.slice(0, 500));
   } catch (err) {
     console.error('Shopping/zombies:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/scoring ────────────────────────────
+// CC FR only — hardcoded to customer 432-928-8276
+
+const SCORING_BUCKETS = {
+  'TOP':    { label: 'Top',       color: '#00B87A', order: 1 },
+  'MIDDLE': { label: 'Middle',    color: '#F5A623', order: 2 },
+  'FLOP':   { label: 'Flop',      color: '#E8524A', order: 3 },
+  'ZOMBIE': { label: 'Zombie',    color: '#8896B0', order: 4 },
+  '':       { label: 'Non scoré', color: '#D1D5DB', order: 5 },
+};
+
+router.get('/scoring', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
+
+    const rows = await getScoringData(from, to);
+
+    // Aggregate by scoring bucket
+    const agg = {};
+    for (const [key] of Object.entries(SCORING_BUCKETS)) {
+      agg[key] = { cost: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0, items: new Set() };
+    }
+
+    for (const row of rows) {
+      const key = row.scoring in SCORING_BUCKETS ? row.scoring : '';
+      agg[key].cost        += row.cost;
+      agg[key].revenue     += row.revenue;
+      agg[key].impressions += row.impressions;
+      agg[key].clicks      += row.clicks;
+      agg[key].conversions += row.conversions;
+      if (row.item_id) agg[key].items.add(row.item_id);
+    }
+
+    const totalSpend   = Object.values(agg).reduce((s, v) => s + v.cost, 0);
+    const totalRevenue = Object.values(agg).reduce((s, v) => s + v.revenue, 0);
+    const breakeven    = POAS_BREAKEVEN['Cocooncenter']['FR'];
+
+    const result = Object.entries(SCORING_BUCKETS)
+      .map(([key, meta]) => {
+        const d = agg[key];
+        const roas = d.cost > 0 ? r2(d.revenue / d.cost) : 0;
+        const cvr  = d.clicks > 0 ? r2((d.conversions / d.clicks) * 100) : 0;
+        return {
+          scoring:       key || 'NON_SCORE',
+          label:         meta.label,
+          color:         meta.color,
+          product_count: d.items.size,
+          spend:         r2(d.cost),
+          revenue:       r2(d.revenue),
+          conversions:   r2(d.conversions),
+          impressions:   d.impressions,
+          clicks:        d.clicks,
+          roas,
+          cvr,
+          spend_pct:   totalSpend   > 0 ? r2((d.cost    / totalSpend)   * 100) : 0,
+          revenue_pct: totalRevenue > 0 ? r2((d.revenue / totalRevenue) * 100) : 0,
+          breakeven,
+        };
+      })
+      .filter(b => b.spend > 0 || b.revenue > 0 || b.impressions > 0);
+
+    result.sort((a, b) => {
+      const keyA = a.scoring === 'NON_SCORE' ? '' : a.scoring;
+      const keyB = b.scoring === 'NON_SCORE' ? '' : b.scoring;
+      return (SCORING_BUCKETS[keyA]?.order ?? 99) - (SCORING_BUCKETS[keyB]?.order ?? 99);
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Shopping/scoring:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
     res.status(500).json({ error: err.message });
   }

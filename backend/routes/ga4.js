@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams, getGA4Streams, getGA4Hostnames, getGA4BounceRateYtd, getGA4CvrAovYtd } from '../ga4Client.js';
+import { getGA4Kpis, getGA4Trend, getGA4Channels, fetchAndWriteStreams, getGA4Streams, getGA4Hostnames, getGA4BounceRateYtd, getGA4CvrAovYtd, getGA4FunnelYtd } from '../ga4Client.js';
 
 const router = express.Router();
 
@@ -124,6 +124,19 @@ router.get('/cvr-aov-ytd', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('GA4 CvrAovYtd error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/ga4/funnel-ytd ───────────────────────────
+router.get('/funnel-ytd', async (req, res) => {
+  try {
+    await ensureStreams();
+    const { brand = 'ALL', market = 'ALL', granularity = 'week' } = req.query;
+    const result = await getGA4FunnelYtd({ brand, market, granularity });
+    res.json(result);
+  } catch (err) {
+    console.error('GA4 FunnelYtd error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
