@@ -94,8 +94,8 @@ export default function App() {
           <CompetitionView />
         )}
 
-{activeView === 'shopping' && (
-          <ShoppingView />
+        {activeView === 'shopping' && (
+          <ShoppingView filters={filters} />
         )}
 
         {activeView === 'assistant' && (

@@ -72,20 +72,28 @@ function microsToPrice(micros) {
 
 // ─── Caches ───────────────────────────────────────────────
 // keyed by `${merchantId}::${countryCode || 'ALL'}`
-const priceCache = new Map();
-const pcCache    = new Map();
+const priceCache  = new Map();
+const pcCache     = new Map();
+const statusCache = new Map(); // productstatuses (issues + aggregated_destination_status)
+const promoCache  = new Map(); // sale_price info from ProductView
 
 // In-flight deduplication: concurrent callers share the same pending Promise
 // instead of each firing a redundant MC API request (prevents cache stampede).
-const priceInFlight = new Map();
-const pcInFlight    = new Map();
+const priceInFlight  = new Map();
+const pcInFlight     = new Map();
+const statusInFlight = new Map();
+const promoInFlight  = new Map();
 
-const PRICE_CACHE_TTL = 60 * 60 * 1000;     // 1h
-const PC_CACHE_TTL    = 3 * 60 * 60 * 1000; // 3h
+const PRICE_CACHE_TTL  = 60 * 60 * 1000;     // 1h
+const PC_CACHE_TTL     = 3 * 60 * 60 * 1000; // 3h
+const STATUS_CACHE_TTL = 60 * 60 * 1000;     // 1h
+const PROMO_CACHE_TTL  = 60 * 60 * 1000;     // 1h
 
 export function clearMcCache() {
   priceCache.clear();
   pcCache.clear();
+  statusCache.clear();
+  promoCache.clear();
 }
 
 // ─── Catalog prices via ProductView ───────────────────────
@@ -289,5 +297,220 @@ export async function getPriceCompetitivenessData(brand, market = 'ALL') {
   })();
 
   pcInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+// ─── Product statuses (productstatuses.list) ──────────────
+// Classifies issues → IMAGE / DESCRIPTION / GTIN / CATEGORY / SHIPPING / PRICE / AVAILABILITY / OTHER
+// Checks `code` (structured, English, stable) first, then description/attribute.
+function classifyIssue({ code = '', description = '', attributeName = '' } = {}) {
+  const hay = `${code} ${attributeName} ${description}`.toLowerCase();
+  if (hay.includes('image'))                                    return 'IMAGE';
+  if (hay.includes('gtin') || hay.includes('mpn') || hay.includes('identifier')) return 'GTIN';
+  if (hay.includes('categor') || hay.includes('google_product_category') || hay.includes('product_type')) return 'CATEGORY';
+  if (hay.includes('shipping') || hay.includes('livraison'))    return 'SHIPPING';
+  if (hay.includes('availab') || hay.includes('dispon') || hay.includes('stock')) return 'AVAILABILITY';
+  if (hay.includes('price') || hay.includes('prix') || hay.includes('sale_price')) return 'PRICE';
+  if (hay.includes('description') || hay.includes('title') || hay.includes('titre')) return 'DESCRIPTION';
+  return 'OTHER';
+}
+
+// Normalize aggregated_destination_status → active | disapproved | limited | pending
+function normalizeAgg(status) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('disapprov'))                     return 'disapproved';
+  if (s.includes('limited') || s.includes('warn')) return 'limited';
+  if (s.includes('pending'))                       return 'pending';
+  if (s.includes('active') || s.includes('eligibl')) return 'active';
+  return 'pending';
+}
+
+async function fetchProductStatusesForMerchant(merchantId, countryCode = null) {
+  const cacheKey = `${merchantId}::${countryCode || 'ALL'}`;
+  const cached = statusCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < STATUS_CACHE_TTL) return cached.items;
+
+  const auth    = getOAuth2Client();
+  const content = google.content({ version: 'v2.1', auth });
+
+  const items = [];
+  let pageToken;
+  let pages = 0;
+
+  do {
+    const params = { merchantId, maxResults: 250 };
+    if (pageToken) params.pageToken = pageToken;
+
+    const res = await content.productstatuses.list(params).catch(e => {
+      console.error(`MC productstatuses ${merchantId}:`, e?.message || e);
+      return { data: { resources: [] } };
+    });
+
+    for (const ps of (res.data.resources || [])) {
+      // productstatuses ids are like "online:fr:FR:REF123" — same shape as ProductView.id
+      const idParts = (ps.productId || '').split(':');
+      const rowCountry = idParts[2] || '';
+      if (countryCode && rowCountry !== countryCode) continue;
+
+      const offerId = idParts.slice(3).join(':') || ps.productId;
+      const issues = (ps.itemLevelIssues || []).map(i => ({
+        type:        classifyIssue({ code: i.code, description: i.description, attributeName: i.attributeName }),
+        code:        i.code || null,
+        description: i.description || i.code || '',
+        attribute:   i.attributeName || null,
+        severity:    (i.servability || '').toLowerCase() || 'warning',
+        destination: i.destination || null,
+      }));
+
+      // Derive aggregated status from destinationStatuses (first entry) — API v2.1
+      // returns either a string field `status` or an approvedCountries array.
+      const ds = ps.destinationStatuses?.[0] || {};
+      let status = 'pending';
+      if (ds.status)                         status = normalizeAgg(ds.status);
+      else if (ds.approvedCountries?.length) status = 'active';
+      else if (ds.disapprovedCountries?.length) status = 'disapproved';
+      // Issue-driven override
+      if (issues.some(i => i.severity === 'disapproved')) status = 'disapproved';
+      else if (issues.length > 0 && status === 'active')   status = 'limited';
+
+      items.push({
+        item_id: offerId,
+        title:   ps.title || '',
+        brand:   ps.brand || null,
+        status,
+        issues,
+      });
+    }
+
+    pageToken = res.data.nextPageToken;
+    pages++;
+  } while (pageToken && pages < 200);
+
+  console.log(`MC productstatuses ${merchantId} country=${countryCode || 'ALL'}: ${items.length} products`);
+  statusCache.set(cacheKey, { items, ts: Date.now() });
+  return items;
+}
+
+export async function getProductStatuses(brand, market = 'ALL') {
+  const cacheKey = `${brand}::${market}`;
+  if (statusInFlight.has(cacheKey)) return statusInFlight.get(cacheKey);
+
+  const promise = (async () => {
+    try {
+      const targets = getMcTargets(brand, market);
+      if (!targets.length) return [];
+      const lists = await Promise.all(
+        targets.map(({ merchantId, countryCode }) => fetchProductStatusesForMerchant(merchantId, countryCode))
+      );
+      // Dedupe by item_id (same offer may appear across sub-accounts)
+      const byId = {};
+      for (const list of lists) {
+        for (const it of list) {
+          if (!byId[it.item_id]) byId[it.item_id] = it;
+        }
+      }
+      return Object.values(byId);
+    } catch (e) {
+      console.error('getProductStatuses error:', e?.message);
+      return [];
+    } finally {
+      statusInFlight.delete(cacheKey);
+    }
+  })();
+
+  statusInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+// ─── Sale prices via ProductView ──────────────────────────
+// Reads sale_price_micros + sale_price_effective_date alongside regular price.
+async function fetchSalePricesForMerchant(merchantId, countryCode = null) {
+  const cacheKey = `${merchantId}::${countryCode || 'ALL'}`;
+  const cached = promoCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < PROMO_CACHE_TTL) return cached.promos;
+
+  const auth    = getOAuth2Client();
+  const content = google.content({ version: 'v2.1', auth });
+
+  // NOTE: sale_price_effective_date is not reliably queryable on ProductView v2.1,
+  // so we only fetch sale_price_micros and present no dates in the UI (handled
+  // client-side as "Pas de date").
+  const query = `SELECT product_view.id, product_view.offer_id, product_view.title, product_view.brand, product_view.price_micros, product_view.sale_price_micros, product_view.currency_code FROM ProductView`;
+
+  const promos = {};
+  let pageToken;
+  let pages = 0;
+  let totalRows = 0;
+  let withSale  = 0;
+
+  do {
+    const reqBody = { query, pageSize: 1000 };
+    if (pageToken) reqBody.pageToken = pageToken;
+
+    const res = await content.reports.search({
+      merchantId,
+      requestBody: reqBody,
+    }).catch(e => {
+      console.error(`MC sale prices ${merchantId}: API error — ${e?.message || e}`);
+      return { data: { results: [] } };
+    });
+
+    for (const row of (res.data.results || [])) {
+      totalRows++;
+      const pv = row.productView;
+      if (!pv?.offerId || !pv?.salePriceMicros) continue;
+      withSale++;
+
+      if (countryCode) {
+        const idParts = (pv.id || '').split(':');
+        const rowCountry = idParts[2] || '';
+        if (rowCountry !== countryCode) continue;
+      }
+
+      const existing = promos[pv.offerId];
+      const isOnline = (pv.id || '').startsWith('online:');
+      if (existing && !isOnline) continue;
+
+      promos[pv.offerId] = {
+        title:           pv.title || '',
+        brand:           pv.brand || null,
+        original_price:  microsToPrice(pv.priceMicros),
+        sale_price:      microsToPrice(pv.salePriceMicros),
+        currency:        pv.currencyCode || 'EUR',
+        promo_start:     null,
+        promo_end:       null,
+      };
+    }
+
+    pageToken = res.data.nextPageToken;
+    pages++;
+  } while (pageToken && pages < 500);
+
+  console.log(`MC sale prices ${merchantId} country=${countryCode || 'ALL'}: ${totalRows} rows, ${withSale} with sale_price, ${Object.keys(promos).length} matched after country filter`);
+  promoCache.set(cacheKey, { promos, ts: Date.now() });
+  return promos;
+}
+
+export async function getSalePriceMap(brand, market = 'ALL') {
+  const cacheKey = `${brand}::${market}`;
+  if (promoInFlight.has(cacheKey)) return promoInFlight.get(cacheKey);
+
+  const promise = (async () => {
+    try {
+      const targets = getMcTargets(brand, market);
+      if (!targets.length) return {};
+      const maps = await Promise.all(
+        targets.map(({ merchantId, countryCode }) => fetchSalePricesForMerchant(merchantId, countryCode))
+      );
+      return Object.assign({}, ...maps);
+    } catch (e) {
+      console.error('getSalePriceMap error:', e?.message);
+      return {};
+    } finally {
+      promoInFlight.delete(cacheKey);
+    }
+  })();
+
+  promoInFlight.set(cacheKey, promise);
   return promise;
 }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../auth.js';
 import { getShoppingData, getScoringData } from '../googleAdsClient.js';
-import { getPriceMap, getPriceCompetitivenessData } from '../services/merchantCenterClient.js';
+import { getPriceMap, getPriceCompetitivenessData, getProductStatuses, getSalePriceMap } from '../services/merchantCenterClient.js';
 import { POAS_BREAKEVEN } from '../config/poasThresholds.js';
 
 const router = Router();
@@ -527,6 +527,263 @@ router.get('/scoring', async (req, res) => {
   } catch (err) {
     console.error('Shopping/scoring:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/product-status-summary ────────────
+// Scorecards statut produits (actifs / refusés / limités / en attente / total)
+router.get('/product-status-summary', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL' } = req.query;
+    const items = await getProductStatuses(brand, market);
+    const counts = { active: 0, disapproved: 0, limited: 0, pending: 0 };
+    for (const it of items) {
+      if (counts[it.status] != null) counts[it.status]++;
+      else counts.pending++;
+    }
+    const total = items.length;
+    res.json({ ...counts, total });
+  } catch (err) {
+    console.error('Shopping/product-status-summary:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/brands-detail ─────────────────────
+// Tableau top marques (accordéon section 3)
+router.get('/brands-detail', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL', from, to } = req.query;
+    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
+
+    const [rows, pcMap] = await Promise.all([
+      getShoppingData(brand, market, from, to),
+      getPriceCompetitivenessData(brand, market),
+    ]);
+    const products = aggregateProducts(rows);
+    const brands = aggregateBrands(products, pcMap);
+    brands.sort((a, b) => b.revenue - a.revenue);
+    res.json(brands);
+  } catch (err) {
+    console.error('Shopping/brands-detail:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/products-by-brand ─────────────────
+// Drill-down produits d'une marque (accordéon section 3)
+router.get('/products-by-brand', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL', from, to, product_brand } = req.query;
+    if (!from || !to)     return res.status(400).json({ error: 'Missing from/to' });
+    if (!product_brand)   return res.status(400).json({ error: 'Missing product_brand' });
+
+    const [rows, priceMap, pcMap] = await Promise.all([
+      getShoppingData(brand, market, from, to),
+      getPriceMap(brand, market),
+      getPriceCompetitivenessData(brand, market),
+    ]);
+    const products = enrichProducts(aggregateProducts(rows), priceMap, pcMap)
+      .filter(p => (p.product_brand || '(Sans marque)') === product_brand);
+    products.sort((a, b) => b.revenue - a.revenue);
+    res.json(products.slice(0, 500));
+  } catch (err) {
+    console.error('Shopping/products-by-brand:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/top-flop ──────────────────────────
+// Top & Flop produits/marques/catégories — trend vs période précédente
+router.get('/top-flop', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const {
+      brand = 'ALL', market = 'ALL', from, to,
+      compareTo = 'previous_period',
+      view = 'product',
+      limit = '20',
+    } = req.query;
+    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
+
+    const { compFrom, compTo } = getCompDates(from, to, compareTo);
+    const [currRows, prevRows] = await Promise.all([
+      getShoppingData(brand, market, from, to),
+      getShoppingData(brand, market, compFrom, compTo),
+    ]);
+
+    // Aggregate both periods
+    const curr = aggregateProducts(currRows);
+    const prev = aggregateProducts(prevRows);
+
+    // Group if needed
+    function groupBy(products, keyFn, labelFn) {
+      const map = new Map();
+      for (const p of products) {
+        const key = keyFn(p);
+        if (!key) continue;
+        if (!map.has(key)) {
+          map.set(key, { key, label: labelFn(p, key), revenue: 0, cost: 0, conversions: 0, clicks: 0 });
+        }
+        const g = map.get(key);
+        g.revenue     += p.revenue;
+        g.cost        += p.cost;
+        g.conversions += p.conversions;
+        g.clicks      += p.clicks;
+      }
+      return Array.from(map.values()).map(g => ({
+        key: g.key, label: g.label,
+        revenue:     r2(g.revenue),
+        cost:        r2(g.cost),
+        conversions: g.conversions,
+        clicks:      g.clicks,
+        roas:        g.cost > 0 ? r2(g.revenue / g.cost) : 0,
+        cvr:         g.clicks > 0 ? r2((g.conversions / g.clicks) * 100) : 0,
+      }));
+    }
+
+    let currRows2, prevRows2;
+    if (view === 'brand') {
+      currRows2 = groupBy(curr, p => p.product_brand || '(Sans marque)', (_p, k) => k);
+      prevRows2 = groupBy(prev, p => p.product_brand || '(Sans marque)', (_p, k) => k);
+    } else if (view === 'category') {
+      currRows2 = groupBy(curr, p => p.category_l1 || '(Sans catégorie)', (_p, k) => k);
+      prevRows2 = groupBy(prev, p => p.category_l1 || '(Sans catégorie)', (_p, k) => k);
+    } else {
+      currRows2 = curr.map(p => ({
+        key: p.item_id, label: p.title || p.item_id, item_id: p.item_id,
+        product_brand: p.product_brand,
+        revenue: p.revenue, cost: p.cost, conversions: p.conversions, clicks: p.clicks,
+        roas: p.roas, cvr: p.cvr,
+      }));
+      prevRows2 = prev.map(p => ({
+        key: p.item_id, label: p.title || p.item_id, item_id: p.item_id,
+        product_brand: p.product_brand,
+        revenue: p.revenue, cost: p.cost, conversions: p.conversions, clicks: p.clicks,
+        roas: p.roas, cvr: p.cvr,
+      }));
+    }
+
+    const prevMap = {};
+    for (const p of prevRows2) prevMap[p.key] = p;
+
+    const merged = currRows2.map(c => {
+      const q = prevMap[c.key] || null;
+      const delta_revenue = q && q.revenue > 0 ? r2(((c.revenue - q.revenue) / q.revenue) * 100) : null;
+      const delta_roas    = q && q.roas    > 0 ? r2(((c.roas    - q.roas)    / q.roas)    * 100) : null;
+      const delta_conv    = q && q.conversions > 0 ? r2(((c.conversions - q.conversions) / q.conversions) * 100) : null;
+      return {
+        label: c.label, key: c.key,
+        item_id: c.item_id, product_brand: c.product_brand,
+        current:  { revenue: c.revenue, roas: c.roas, cvr: c.cvr, conversions: c.conversions, cost: c.cost },
+        previous: q ? { revenue: q.revenue, roas: q.roas, cvr: q.cvr, conversions: q.conversions, cost: q.cost } : null,
+        delta_revenue, delta_roas, delta_conv,
+      };
+    });
+
+    // Only keep rows where we have meaningful data in current period
+    const meaningful = merged.filter(m => m.current.revenue > 0 || m.current.cost > 0);
+    const withDelta  = meaningful.filter(m => m.delta_revenue != null);
+
+    const lim = Math.min(Number(limit) || 20, 100);
+    const top  = [...withDelta].sort((a, b) => (b.delta_revenue ?? -Infinity) - (a.delta_revenue ?? -Infinity)).slice(0, lim);
+    const flop = [...withDelta].sort((a, b) => (a.delta_revenue ?? Infinity)  - (b.delta_revenue ?? Infinity)).slice(0, lim);
+
+    res.json({ top, flop, period: { from, to }, compare: { from: compFrom, to: compTo } });
+  } catch (err) {
+    console.error('Shopping/top-flop:', err.message);
+    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/feed-quality ──────────────────────
+// Qualité du flux Merchant Center (issues produits)
+router.get('/feed-quality', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL' } = req.query;
+    const items = await getProductStatuses(brand, market);
+
+    const withIssues = items.filter(it => it.issues && it.issues.length > 0);
+
+    const summary = { total_issues: 0, image: 0, description: 0, gtin: 0, category: 0, shipping: 0, price: 0, availability: 0, other: 0 };
+    for (const it of withIssues) {
+      for (const iss of it.issues) {
+        summary.total_issues++;
+        const k = iss.type.toLowerCase();
+        if (summary[k] != null) summary[k]++;
+        else summary.other++;
+      }
+    }
+
+    res.json({
+      summary,
+      products: withIssues.slice(0, 500).map(it => ({
+        item_id:  it.item_id,
+        title:    it.title,
+        brand:    it.brand,
+        status:   it.status,
+        severity: it.status,
+        issues:   it.issues,
+      })),
+    });
+  } catch (err) {
+    console.error('Shopping/feed-quality:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/shopping/promos ────────────────────────────
+// Produits avec sale_price actif (badge promo dans le flux)
+router.get('/promos', async (req, res) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const { brand = 'ALL', market = 'ALL' } = req.query;
+
+    const [promoMap, pcMap] = await Promise.all([
+      getSalePriceMap(brand, market),
+      getPriceCompetitivenessData(brand, market),
+    ]);
+
+    const results = [];
+    for (const [offerId, p] of Object.entries(promoMap)) {
+      if (!p.original_price || !p.sale_price || p.sale_price >= p.original_price) continue;
+      const discount_pct = r2(((p.sale_price - p.original_price) / p.original_price) * 100);
+      const pc = pcMap[offerId] || null;
+      const delta_vs_market = pc?.benchmark_price
+        ? r2(((p.sale_price - pc.benchmark_price) / pc.benchmark_price) * 100)
+        : null;
+      const market_status = delta_vs_market == null
+        ? 'NO_DATA'
+        : delta_vs_market < -5 ? 'COMPETITIVE' : delta_vs_market > 5 ? 'EXPENSIVE' : 'ON_PAR';
+
+      results.push({
+        item_id:         offerId,
+        title:           p.title,
+        brand:           p.brand,
+        original_price:  p.original_price,
+        sale_price:      p.sale_price,
+        discount_pct,
+        benchmark_price: pc?.benchmark_price ?? null,
+        delta_vs_market,
+        market_status,
+        promo_start:     p.promo_start,
+        promo_end:       p.promo_end,
+        currency:        p.currency,
+      });
+    }
+
+    results.sort((a, b) => a.discount_pct - b.discount_pct); // most negative (biggest discount) first
+    res.json(results);
+  } catch (err) {
+    console.error('Shopping/promos:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
