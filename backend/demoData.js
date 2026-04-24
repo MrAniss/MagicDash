@@ -169,7 +169,7 @@ export function generateMarkets({ brand, from, to, compareTo }) {
 
 export function generateCampaigns({ brand, market, from, to, type }) {
   const accounts = getAccounts(brand, market);
-  const campaignTypes = ['PMax', 'Shopping', 'Search', 'DSA'];
+  const campaignTypes = ['Performance Max', 'Shopping', 'Search', 'DSA'];
   const campaigns = [];
   const seed = hashString(`campaigns-${brand}-${market}-${from}-${to}-${type}`);
   const rng = seededRandom(seed);

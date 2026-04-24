@@ -51,7 +51,7 @@ function parseNum(val) {
 function mapCampaignType(rawType) {
   if (!rawType) return 'Other';
   const t = rawType.trim().toLowerCase();
-  if (t.includes('performance max') || t === 'pmax') return 'PMax';
+  if (t.includes('performance max') || t === 'pmax') return 'Performance Max';
   if (t.includes('shopping')) return 'Shopping';
   if (t.includes('search') || t.includes('recherche')) return 'Search';
   if (t.includes('display')) return 'Display';

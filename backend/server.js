@@ -14,7 +14,7 @@ import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
 import { getBudgetForMonth, getPCSBudgetForMonth, clearBudgetCache } from './services/budgetSheetReader.js';
 import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
-import { clearGA4Cache } from './ga4Client.js';
+import { clearGA4Cache, getGA4Rows } from './ga4Client.js';
 import { clearMcCache } from './services/merchantCenterClient.js';
 import ga4Router from './routes/ga4.js';
 import competitionRouter from './routes/competition.js';
@@ -201,13 +201,27 @@ app.get('/api/campaigns', async (req, res) => {
     const prevByCampaign = groupBy(prevRows, r => r.campaign);
 
     const campaigns = Object.entries(byCampaign).map(([name, campRows]) => {
-      const m = aggregateMetrics(campRows);
+      const cur = aggregateMetrics(campRows);
+      const prev = aggregateMetrics(prevByCampaign[name] || []);
       const firstRow = campRows[0];
       return {
         campaign_name: name,
         type: firstRow.campaign_type,
         status: firstRow.campaign_status === 'Active' ? 'ENABLED' : 'PAUSED',
-        ...m,
+        ...cur,
+        delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
+        delta_impressions: pctChange(cur.impressions, prev.impressions),
+        delta_clicks: pctChange(cur.clicks, prev.clicks),
+        delta_ctr: pctChange(cur.ctr, prev.ctr),
+        delta_spend: pctChange(cur.spend, prev.spend),
+        delta_cpc: pctChange(cur.cpc, prev.cpc),
+        delta_conversions: pctChange(cur.conversions, prev.conversions),
+        delta_revenue: pctChange(cur.revenue, prev.revenue),
+        delta_cvr: pctChange(cur.cvr, prev.cvr),
+        delta_aov: pctChange(cur.aov, prev.aov),
+        delta_roas: pctChange(cur.roas, prev.roas),
+        delta_rankLostShare: pctChange(cur.rankLostShare, prev.rankLostShare),
+        delta_budgetLostShare: pctChange(cur.budgetLostShare, prev.budgetLostShare),
       };
     });
 
@@ -233,6 +247,12 @@ app.get('/api/campaigns', async (req, res) => {
         delta_roas: pctChange(cur.roas, prev.roas),
         delta_spend: pctChange(cur.spend, prev.spend),
         delta_aov: pctChange(cur.aov, prev.aov),
+        delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
+        delta_revenue: pctChange(cur.revenue, prev.revenue),
+        delta_cvr: pctChange(cur.cvr, prev.cvr),
+        delta_clicks: pctChange(cur.clicks, prev.clicks),
+        delta_ctr: pctChange(cur.ctr, prev.ctr),
+        delta_conversions: pctChange(cur.conversions, prev.conversions),
       };
     });
 
@@ -667,19 +687,29 @@ app.get('/api/budget/recommendations', async (req, res) => {
 // ─── Comarket ──────────────────────────────────────────
 app.get('/api/comarket', async (req, res) => {
   try {
-    const { from, to, compareTo = 'previous_period', granularity } = req.query;
+    const { from, to, compareTo = 'previous_period', granularity, partnerBrand } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarketRows = await getComarketRows({ from, to });
-    const current = aggregateMetrics(comarketRows);
-
-    // Get total FR spend for context
+    let comarketRows = await getComarketRows({ from, to });
+    
+    // Get total FR spend for context (always global FR)
     const frRows = await getRows({ brand: 'COCOONCENTER', market: 'FR', from, to, includeComarket: true });
     const totalFR = aggregateMetrics(frRows);
 
     // Comparison
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevComarketRows = await getComarketRows({ from: compFrom, to: compTo });
+    let prevComarketRows = await getComarketRows({ from: compFrom, to: compTo });
+
+    // Extract all available brands before filtering
+    const allBrands = Array.from(new Set(comarketRows.map(r => extractComarketBrand(r.campaign)))).filter(Boolean).sort();
+
+    // Filter by brand if requested
+    if (partnerBrand && partnerBrand !== 'ALL') {
+      comarketRows = comarketRows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
+      prevComarketRows = prevComarketRows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
+    }
+
+    const current = aggregateMetrics(comarketRows);
     const previous = aggregateMetrics(prevComarketRows);
 
     const deltas = {
@@ -700,17 +730,35 @@ app.get('/api/comarket', async (req, res) => {
       revenue: totalFR.revenue > 0 ? Math.round((current.revenue / totalFR.revenue) * 10000) / 100 : 0,
     };
 
-    // Campaign breakdown with per-campaign deltas
+    // Campaign breakdown with intelligent reconciliation
     const byCampaign = groupBy(comarketRows, r => r.campaign);
     const prevByCampaign = groupBy(prevComarketRows, r => r.campaign);
+    
+    // Build a fallback map for reconciliation (Brand + Type)
+    const prevByReconKey = groupBy(prevComarketRows, r => `${extractComarketBrand(r.campaign)}|${r.campaign_type}`);
+
     const campaigns = Object.entries(byCampaign).map(([name, campRows]) => {
       const m = aggregateMetrics(campRows);
-      const pm = aggregateMetrics(prevByCampaign[name] || []);
       const firstRow = campRows[0];
-      const partnerBrand = extractComarketBrand(name);
+      const partnerBrandName = extractComarketBrand(name);
+      const campaignType = firstRow.campaign_type;
+
+      // 1. Try exact name match
+      let pm = aggregateMetrics(prevByCampaign[name] || []);
+      
+      // 2. If no exact match and it's a comarket campaign, try matching by Brand + Type
+      if (pm.impressions === 0) {
+        const reconKey = `${partnerBrandName}|${campaignType}`;
+        const potentialMatches = prevByReconKey[reconKey] || [];
+        if (potentialMatches.length > 0) {
+           // Use the aggregate of that brand/type from last year as a proxy
+           pm = aggregateMetrics(potentialMatches);
+        }
+      }
+
       return {
         campaign_name: name,
-        partner_brand: partnerBrand,
+        partner_brand: partnerBrandName,
         status: firstRow.campaign_status === 'Active' ? 'ENABLED' : 'PAUSED',
         ...m,
         delta_impressions: pctChange(m.impressions, pm.impressions),
@@ -724,7 +772,31 @@ app.get('/api/comarket', async (req, res) => {
         delta_roas:        pctChange(m.roas, pm.roas),
       };
     });
+
+    // Brand-level summary (Reconciliation)
+    const currentByBrand = groupBy(comarketRows, r => extractComarketBrand(r.campaign));
+    const prevByBrand = groupBy(prevComarketRows, r => extractComarketBrand(r.campaign));
+    
+    const brandSummary = Object.entries(currentByBrand).map(([bName, bRows]) => {
+      const cur = aggregateMetrics(bRows);
+      const prev = aggregateMetrics(prevByBrand[bName] || []);
+      return {
+        brand: bName,
+        ...cur,
+        delta_impressions: pctChange(cur.impressions, prev.impressions),
+        delta_clicks:      pctChange(cur.clicks, prev.clicks),
+        delta_ctr:         pctChange(cur.ctr, prev.ctr),
+        delta_spend:       pctChange(cur.spend, prev.spend),
+        delta_cpc:         pctChange(cur.cpc, prev.cpc),
+        delta_conversions: pctChange(cur.conversions, prev.conversions),
+        delta_revenue:     pctChange(cur.revenue, prev.revenue),
+        delta_cvr:         pctChange(cur.cvr, prev.cvr),
+        delta_roas:        pctChange(cur.roas, prev.roas),
+      };
+    });
+
     campaigns.sort((a, b) => b.spend - a.spend);
+    brandSummary.sort((a, b) => b.spend - a.spend);
 
     // Trend
     const days = daysBetween(from, to);
@@ -734,7 +806,9 @@ app.get('/api/comarket', async (req, res) => {
     res.json({
       kpis: { current, previous, deltas, pctOfFR },
       campaigns,
+      brandSummary,
       trend,
+      availableBrands: allBrands
     });
   } catch (err) {
     console.error('Comarket error:', err.message);
@@ -745,10 +819,19 @@ app.get('/api/comarket', async (req, res) => {
 // ─── Helpers ───────────────────────────────────────────
 
 function extractComarketBrand(campaignName) {
-  const parts = campaignName.split('|').map(p => p.trim());
+  // Split by | or - and trim each part
+  const parts = campaignName.split(/[|-]/).map(p => p.trim());
   const idx = parts.findIndex(p => p.toLowerCase().includes('comarket'));
   if (idx === -1) return '';
-  return parts[idx + 1] || '';
+  
+  let rawBrand = parts[idx + 1] || '';
+  
+  // Normalization
+  if (rawBrand.toLowerCase().includes('bioderma')) return 'Bioderma';
+  if (rawBrand.toLowerCase().includes('eucerin')) return 'Eucerin';
+  if (rawBrand.toLowerCase().includes('cooper')) return 'Cooper';
+  
+  return rawBrand;
 }
 
 function buildTrendSeries(rows, granularity) {
@@ -816,9 +899,11 @@ const YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/trend/ytd', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket } = req.query;
-    const comarket = includeComarket === 'true';
-    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}`;
+    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket, onlyComarket, partnerBrand } = req.query;
+    const comarket = includeComarket === 'true' || onlyComarket === 'true';
+    const isOnlyComarket = onlyComarket === 'true';
+    
+    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}|${isOnlyComarket}|${partnerBrand || 'ALL'}`;
 
     const cached = ytdCache.get(cacheKey);
     if (cached && (Date.now() - cached.ts) < YTD_CACHE_TTL) {
@@ -829,7 +914,16 @@ app.get('/api/trend/ytd', async (req, res) => {
     const from = `${today.getFullYear()}-01-01`;
     const to = fmtDate(today);
 
-    const rows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    let rows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    
+    if (isOnlyComarket) {
+      rows = rows.filter(r => r.campaign.toLowerCase().includes('comarket'));
+    }
+    
+    if (partnerBrand && partnerBrand !== 'ALL') {
+      rows = rows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
+    }
+
     const series = buildTrendSeries(rows, granularity);
 
     const FR_MONTHS = ['jan', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
@@ -844,7 +938,7 @@ app.get('/api/trend/ytd', async (req, res) => {
         period = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
         const end = new Date(d);
         end.setDate(d.getDate() + 6);
-        label = `${d.getDate()} ${FR_MONTHS[d.getMonth()]} – ${end.getDate()} ${FR_MONTHS[end.getMonth()]}`;
+        label = `W${String(weekNum).padStart(2, '0')} (${d.getDate()} ${FR_MONTHS[d.getMonth()]} – ${end.getDate()} ${FR_MONTHS[end.getMonth()]})`;
       } else if (granularity === 'month') {
         period = item.date.slice(0, 7);
         label = `${FR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
@@ -988,6 +1082,131 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── GA4 Trend YTD ─────────────────────────────────────
+const ga4YtdCache = new Map();
+const GA4_YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
+
+app.get('/api/ga4/trend/ytd', async (req, res) => {
+  try {
+    const { brand = 'ALL', market = 'ALL', granularity = 'week', sourceMedium } = req.query;
+    const cacheKey = `ga4_ytd|${brand}|${market}|${granularity}|${sourceMedium || 'all'}`;
+
+    const cached = ga4YtdCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < GA4_YTD_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const today = new Date();
+    const from = `${today.getFullYear()}-01-01`;
+    const to = fmtDate(today);
+
+    // 1. Get GA4 Data
+    const ga4Rows = await getGA4Rows({ brand, market, from, to, sourceMedium });
+    
+    // 2. Get Ads Data for Cost (spend)
+    const adsRows = await getRows({ brand, market, from, to, includeComarket: true });
+
+    // Helper to group and merge
+    function buildMergedTrend(g4Rows, aRows, gran) {
+      const g4ByDate = groupBy(g4Rows, r => r.date);
+      const aByDate = groupBy(aRows, r => r.date);
+      
+      const allDates = [...new Set([...Object.keys(g4ByDate), ...Object.keys(aByDate)])].sort();
+      
+      const dailyMerged = allDates.map(date => {
+        const g4 = aggregateGA4Metrics(g4ByDate[date] || []);
+        const ads = aggregateMetrics(aByDate[date] || []);
+        return {
+          date,
+          revenue: g4.revenue,
+          sessions: g4.sessions,
+          users: g4.users,
+          transactions: g4.transactions,
+          cvr: g4.cvr,
+          aov: g4.aov,
+          cost: ads.spend, // Ads spend
+        };
+      });
+
+      // Group by granularity
+      let keyFn;
+      if (gran === 'week') {
+        keyFn = r => {
+          const d = new Date(r.date);
+          const day = d.getDay();
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+          const monday = new Date(d);
+          monday.setDate(diff);
+          return fmtDate(monday);
+        };
+      } else if (gran === 'month') {
+        keyFn = r => r.date.slice(0, 7);
+      } else {
+        keyFn = r => r.date;
+      }
+
+      const grouped = groupBy(dailyMerged, keyFn);
+      const FR_MONTHS = ['jan', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+
+      return Object.entries(grouped).map(([date, rows]) => {
+        const d = new Date(date);
+        let period = date;
+        let label = date;
+
+        if (gran === 'week') {
+          const weekNum = getISOWeek(d);
+          period = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+          label = `W${String(weekNum).padStart(2, '0')} (${d.getFullYear()})`;
+        } else if (gran === 'month') {
+          period = date.slice(0, 7);
+          label = `${FR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+        } else {
+          label = `${d.getDate()} ${FR_MONTHS[d.getMonth()]}`;
+        }
+
+        const agg = {
+          revenue: rows.reduce((s, r) => s + r.revenue, 0),
+          sessions: rows.reduce((s, r) => s + r.sessions, 0),
+          users: rows.reduce((s, r) => s + r.users, 0),
+          transactions: rows.reduce((s, r) => s + r.transactions, 0),
+          cost: rows.reduce((s, r) => s + r.cost, 0),
+        };
+
+        return {
+          period,
+          label,
+          ...agg,
+          roas: agg.cost > 0 ? r2(agg.revenue / agg.cost) : 0,
+          cvr: agg.sessions > 0 ? r2((agg.transactions / agg.sessions) * 100) : 0,
+          aov: agg.transactions > 0 ? r2(agg.revenue / agg.transactions) : 0,
+        };
+      }).sort((a, b) => a.period.localeCompare(b.period));
+    }
+
+    const result = buildMergedTrend(ga4Rows, adsRows, granularity);
+
+    ga4YtdCache.set(cacheKey, { data: result, ts: Date.now() });
+    res.json(result);
+  } catch (err) {
+    console.error('GA4 Trend YTD error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function aggregateGA4Metrics(rows) {
+  const revenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const sessions = rows.reduce((s, r) => s + (r.sessions || 0), 0);
+  const transactions = rows.reduce((s, r) => s + (r.transactions || 0), 0);
+  return {
+    revenue,
+    sessions,
+    transactions,
+    users: rows.reduce((s, r) => s + (r.users || 0), 0),
+    cvr: sessions > 0 ? (transactions / sessions) * 100 : 0,
+    aov: transactions > 0 ? revenue / transactions : 0,
+  };
+}
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }));
 

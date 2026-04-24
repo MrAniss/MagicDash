@@ -24,13 +24,12 @@ function getAvailableMarkets(brand) {
 }
 
 const VIEW_TABS = [
-  { key: 'dashboard',       label: 'Dashboard' },
-  { key: 'analytics',       label: 'Analytics' },
+  { key: 'dashboard',       label: 'Paid Search' },
   { key: 'budget',          label: 'Budget' },
-  { key: 'campaigns',       label: 'Campagnes' },
   { key: 'comarket',        label: 'Comarket' },
-  // { key: 'competition',  label: 'Concurrence' },   // hidden — en attente
   { key: 'shopping',        label: 'Shopping' },
+  { key: 'analytics',       label: 'Analytics' },
+  // { key: 'competition',  label: 'Concurrence' },   // hidden — en attente
   // { key: 'brand',        label: 'Brand' },          // hidden
   // { key: 'assistant',    label: 'Assistant' },      // hidden — quota Gemini API
   // { key: 'assets',       label: 'Assets' },         // hidden
@@ -38,6 +37,7 @@ const VIEW_TABS = [
 
 const PRESETS = [
   { key: 'yesterday', label: 'Yesterday' },
+  { key: 'WTD', label: 'WTD' },
   { key: 'last_week', label: 'Last Week' },
   { key: 'last_month', label: 'Last Month' },
   { key: 'MTD', label: 'MTD' },
@@ -163,7 +163,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
               alt="Dhygietal"
               style={{ height: '32px', width: 'auto' }}
             />
-            <span className="text-navy-muted font-normal text-sm">SEA Dashboard</span>
+            <span className="text-navy-muted font-normal text-sm">Acquisition Dashboard</span>
           </div>
 
           <div className="flex items-center gap-3">

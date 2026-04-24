@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { useBrandOverview, useBrandTrend } from '../hooks/useAdsData';
-import { fEur, fNum, fCompact, fROAS } from '../utils/formatters';
+import { fEur, fNum, fCompact, fROAS, fEurInt, fEurCompact } from '../utils/formatters';
 import { API_URL, fetchApi } from '../utils/api';
 
 const BRANDS = [
@@ -247,7 +247,7 @@ export default function BrandView() {
         <Scorecard
           label="Incrément SEA (clics)"
           value={fNum(d.cannibalization.sea_increment_clicks)}
-          sub={`${fEur(d.cannibalization.sea_increment_revenue)} estimés`}
+          sub={`${fEurInt(d.cannibalization.sea_increment_revenue)} estimés`}
         />
       </div>
 
@@ -305,8 +305,8 @@ export default function BrandView() {
               ['% cannibalisation estimé', `${d.cannibalization.cannibalization_rate_pct}%`],
               ['Clics cannibalisés (estim.)', fNum(d.cannibalization.estimated_cannibalized_clicks)],
               ['Clics incrémentaux (estim.)', fNum(d.cannibalization.sea_increment_clicks)],
-              ['Coût SEA brand', fEur(d.cannibalization.sea_cost)],
-              ['Revenue SEA brand', fEur(d.cannibalization.sea_revenue)],
+              ['Coût SEA brand', fEurInt(d.cannibalization.sea_cost)],
+              ['Revenue SEA brand', fEurInt(d.cannibalization.sea_revenue)],
               ['Incremental ROAS', fROAS(d.cannibalization.incremental_roas)],
             ].map(([label, val]) => (
               <tr key={label} className="border-b border-border last:border-0">
@@ -381,8 +381,8 @@ export default function BrandView() {
                   </td>
                   <td className="py-2 text-navy">{c.campaign_name}</td>
                   <td className="py-2 text-right text-navy">{fNum(c.clicks)}</td>
-                  <td className="py-2 text-right text-navy">{fEur(c.cost)}</td>
-                  <td className="py-2 text-right text-navy">{fEur(c.revenue)}</td>
+                  <td className="py-2 text-right text-navy">{fEurInt(c.cost)}</td>
+                  <td className="py-2 text-right text-navy">{fEurInt(c.revenue)}</td>
                 </tr>
               );
             })}

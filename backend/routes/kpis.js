@@ -48,7 +48,7 @@ async function fetchAllAccounts(accounts, from, to) {
   return allRows;
 }
 
-function getFilteredAccounts(brand, market) {
+export function getFilteredAccounts(brand, market) {
   let accounts = [];
   const brands = brand === 'ALL' ? Object.values(BRANDS) : BRANDS[brand] ? [BRANDS[brand]] : [];
 
@@ -62,7 +62,7 @@ function getFilteredAccounts(brand, market) {
   return accounts;
 }
 
-function getComparisonDates(from, to, compareTo) {
+export function getComparisonDates(from, to, compareTo) {
   const fromDate = new Date(from);
   const toDate = new Date(to);
   const diffMs = toDate - fromDate;

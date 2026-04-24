@@ -25,7 +25,7 @@ function setCache(key, data) {
 
 // ─── Google Ads API setup ──────────────────────────────
 
-function getApi() {
+export function getApi() {
   return new GoogleAdsApi({
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
@@ -33,7 +33,7 @@ function getApi() {
   });
 }
 
-function getRefreshToken() {
+export function getRefreshToken() {
   const client = getOAuth2Client();
   const creds = client.credentials;
   if (!creds?.refresh_token) {
@@ -42,7 +42,7 @@ function getRefreshToken() {
   return creds.refresh_token;
 }
 
-function getCustomer(api, customerId, loginCustomerId, refreshToken) {
+export function getCustomer(api, customerId, loginCustomerId, refreshToken) {
   return api.Customer({
     customer_id: customerId.replace(/-/g, ''),
     login_customer_id: loginCustomerId.replace(/-/g, ''),
@@ -75,6 +75,11 @@ function buildGAQL(dateFrom, dateTo, includeComarket) {
       metrics.cost_micros,
       metrics.conversions,
       metrics.conversions_value,
+      metrics.search_impression_share,
+      metrics.search_rank_lost_impression_share,
+      metrics.search_budget_lost_impression_share,
+      metrics.absolute_top_impression_percentage,
+      metrics.top_impression_percentage,
       metrics.search_click_share
     FROM campaign
     WHERE ${where}
@@ -85,16 +90,15 @@ function buildGAQL(dateFrom, dateTo, includeComarket) {
 
 function mapChannelType(type) {
   if (!type) return 'Other';
-  switch (type) {
-    case 2: case 'SEARCH': return 'Search';
-    case 4: case 'SHOPPING': return 'Shopping';
-    case 9: case 'PERFORMANCE_MAX': return 'PMax';
-    case 3: case 'DISPLAY': return 'Display';
-    case 6: case 'VIDEO': return 'Video';
-    case 12: case 'DISCOVERY':
-    case 13: case 'DEMAND_GEN': return 'Demand Gen';
-    default: return 'Other';
-  }
+  const t = String(type).toUpperCase();
+  if (t === '2' || t === 'SEARCH') return 'Search';
+  if (t === '4' || t === 'SHOPPING') return 'Shopping';
+  if (t === '9' || t === '10' || t === 'PERFORMANCE_MAX' || t === 'PMAX') return 'Performance Max';
+  if (t === '3' || t === 'DISPLAY') return 'Display';
+  if (t === '6' || t === 'VIDEO') return 'Video';
+  if (t === '12' || t === 'DISCOVERY') return 'Discovery';
+  if (t === '13' || t === 'DEMAND_GEN') return 'Demand Gen';
+  return t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, ' ');
 }
 
 function mapStatus(status) {
@@ -106,11 +110,32 @@ function mapStatus(status) {
   }
 }
 
+function parsePct(val) {
+  if (val == null) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val !== 'string') return 0;
+  
+  const clean = val.trim();
+  if (clean === '--' || clean === '' || clean === 'UNSPECIFIED') return 0;
+  if (clean.includes('< 10%')) return 0.05;
+  if (clean.includes('> 90%')) return 0.95;
+  
+  const hasPct = clean.includes('%');
+  const num = parseFloat(clean.replace('%', '').replace(',', '.'));
+  if (isNaN(num)) return 0;
+  
+  return hasPct ? num / 100 : num;
+}
+
 function normalizeRow(row, brand, brandLabel, market) {
   const costMicros = Number(row.metrics?.cost_micros || 0);
   const cost = costMicros / 1e6;
   const convValue = Number(row.metrics?.conversions_value || 0);
   const campaignName = row.campaign?.name || '';
+
+  const is = parsePct(row.metrics?.search_impression_share);
+  const absTop = parsePct(row.metrics?.absolute_top_impression_percentage);
+  const finalIs = (is === 0 && absTop > 0) ? absTop : is;
 
   return {
     date: row.segments?.date || '',
@@ -131,7 +156,12 @@ function normalizeRow(row, brand, brandLabel, market) {
     conversion_value: convValue,
     conversions: Number(row.metrics?.conversions || 0),
     roas: cost > 0 ? convValue / cost : 0,
-    clickShare: Number(row.metrics?.search_click_share || 0),
+    clickShare: parsePct(row.metrics?.search_click_share),
+    searchImpressionShare: finalIs,
+    searchRankLostImpressionShare: parsePct(row.metrics?.search_rank_lost_impression_share),
+    searchBudgetLostImpressionShare: parsePct(row.metrics?.search_budget_lost_impression_share),
+    absoluteTopImpressionPercentage: absTop,
+    topImpressionPercentage: parsePct(row.metrics?.top_impression_percentage),
     comarket: campaignName.toLowerCase().includes('comarket'),
   };
 }
@@ -673,7 +703,7 @@ function buildAuctionInsightGAQL(dateFrom, dateTo) {
 
 function normalizeOwnMetricsRow(row, market) {
   const channelType = mapChannelType(row.campaign?.advertising_channel_type);
-  const isPMax = channelType === 'PMax';
+  const isPMax = channelType === 'Performance Max';
   const impressions = Number(row.metrics?.impressions || 0);
   const cost = Number(row.metrics?.cost_micros || 0) / 1e6;
   const safe = (v) => (v != null && v !== '' && !Number.isNaN(Number(v))) ? Number(v) : null;
@@ -775,7 +805,7 @@ export async function getCompetitionTrendData(brand, market, dateFrom, dateTo) {
 
   const normRow = (row, mkt) => {
     const channelType = mapChannelType(row.campaign?.advertising_channel_type);
-    const isPMax = channelType === 'PMax';
+    const isPMax = channelType === 'Performance Max';
     return {
       date: row.segments?.date || '',
       market: mkt, isPMax,

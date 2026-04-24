@@ -4,56 +4,44 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useTrendYtd } from '../hooks/useAdsData';
-import { fEur, fNum, fEurCompact, fCompact } from '../utils/formatters';
+import { useGA4TrendYtd } from '../hooks/useAdsData';
+import { fEur, fNum, fEurCompact, fCompact, fROAS, fPct, fAov } from '../utils/formatters';
 
 const KPI_OPTIONS = [
   {
     value: 'roas',
-    label: 'ROAS',
-    format: v => v != null ? v.toFixed(2) + '×' : '—',
+    label: 'ROAS (GA4/Ads)',
+    format: fROAS,
     axisFormat: v => v?.toFixed(1) + '×',
   },
   {
-    value: 'cpc',
-    label: 'CPC',
-    format: fEur,
-    axisFormat: v => v?.toFixed(2) + ' €',
+    value: 'sessions',
+    label: 'Sessions',
+    format: fNum,
+    axisFormat: fCompact,
   },
   {
-    value: 'clicks',
-    label: 'Clics',
+    value: 'revenue',
+    label: 'Revenue (GA4)',
+    format: fEur,
+    axisFormat: fEurCompact,
+  },
+  {
+    value: 'transactions',
+    label: 'Transactions',
     format: fNum,
     axisFormat: fCompact,
   },
   {
     value: 'cvr',
-    label: 'CVR',
-    format: v => v != null ? v.toFixed(2) + '%' : '—',
-    axisFormat: v => v?.toFixed(1) + '%',
-  },
-  {
-    value: 'conversions',
-    label: 'Conversions',
-    format: v => fNum(v),
-    axisFormat: fCompact,
-  },
-  {
-    value: 'revenue',
-    label: 'Revenue (CA)',
-    format: fEur,
-    axisFormat: fEurCompact,
-  },
-  {
-    value: 'ctr',
-    label: 'CTR',
-    format: v => v != null ? v.toFixed(2) + '%' : '—',
+    label: 'CVR (GA4)',
+    format: fPct,
     axisFormat: v => v?.toFixed(1) + '%',
   },
   {
     value: 'aov',
-    label: 'Panier moyen',
-    format: fEur,
+    label: 'Panier moyen (GA4)',
+    format: fAov,
     axisFormat: v => v != null ? Math.round(v) + ' €' : '—',
   },
 ];
@@ -76,7 +64,7 @@ function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
       <p className="font-semibold text-navy mb-2 text-[13px]">{entry?.label || label}</p>
       <div className="space-y-1">
         <p className="flex justify-between gap-4">
-          <span className="text-navy-muted">Coût</span>
+          <span className="text-navy-muted">Coût (Ads)</span>
           <span className="font-medium text-navy">{fEur(cost)}</span>
         </p>
         <p className="flex justify-between gap-4">
@@ -85,7 +73,7 @@ function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
         </p>
         {kpiOption?.value !== 'revenue' && entry?.revenue != null && (
           <p className="flex justify-between gap-4 border-t border-border pt-1 mt-1">
-            <span className="text-navy-muted">Revenue</span>
+            <span className="text-navy-muted">Revenue (GA4)</span>
             <span className="font-medium text-navy">{fEur(entry.revenue)}</span>
           </p>
         )}
@@ -94,17 +82,15 @@ function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
   );
 }
 
-export default function CostKpiChart({ filters, title, onlyComarket, partnerBrand }) {
+export default function GA4CostKpiChart({ filters, sourceMedium }) {
   const [selectedKpi, setSelectedKpi] = useState('roas');
   const [granularity, setGranularity]  = useState('week');
 
-  const { data, isLoading, isPending, isError, error } = useTrendYtd({
+  const { data, isLoading, isPending, isError, error } = useGA4TrendYtd({
     brand:  filters.brand,
     market: filters.market,
+    sourceMedium,
     granularity,
-    includeComarket: filters.includeComarket,
-    onlyComarket,
-    partnerBrand,
   });
 
   const kpiOption = useMemo(
@@ -112,7 +98,6 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
     [selectedKpi]
   );
 
-  // Initial load skeleton (before any data arrives)
   if (isPending && isLoading) {
     return (
       <div className="bg-white rounded-card p-6 border border-border shadow-card">
@@ -125,9 +110,8 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
     <div className="bg-white rounded-card p-6 border border-border shadow-card">
       {/* Header row */}
       <div className="flex items-center justify-between mb-5">
-        {/* Granularity toggle */}
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-semibold text-navy">Coût & Performance — YTD</h3>
+          <h3 className="text-base font-semibold text-navy">Coût Ads & Performance GA4 — YTD</h3>
           <div className="flex gap-0.5 bg-bg-page rounded-lg p-0.5">
             {GRANULARITIES.map(g => (
               <button
@@ -145,9 +129,8 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
           </div>
         </div>
 
-        {/* KPI selector */}
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-navy-muted">Coût +</span>
+          <span className="text-[12px] text-navy-muted">Coût Ads +</span>
           <div className="relative">
             <select
               value={selectedKpi}
@@ -164,11 +147,10 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
         </div>
       </div>
 
-      {/* Legend indicators */}
       <div className="flex gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm" style={{ background: '#1A2E4A' }} />
-          <span className="text-[11px] text-navy-muted">Coût (€)</span>
+          <span className="text-[11px] text-navy-muted">Coût Ads (€)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-0.5 rounded" style={{ background: '#00E89A' }} />
@@ -212,7 +194,7 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
             <Bar
               yAxisId="left"
               dataKey="cost"
-              name="Coût"
+              name="Coût Ads"
               fill="#1A2E4A"
               radius={[3, 3, 0, 0]}
               maxBarSize={36}
@@ -234,7 +216,7 @@ export default function CostKpiChart({ filters, title, onlyComarket, partnerBran
           {isError ? (
             <>
               <p className="text-danger text-sm font-medium">Erreur de chargement</p>
-              <p className="text-navy-muted text-[12px]">{error?.message || 'Verifiez que le serveur est redémarre'}</p>
+              <p className="text-navy-muted text-[12px]">{error?.message || 'Echec du chargement des données YTD'}</p>
             </>
           ) : (
             <p className="text-navy-muted text-sm">Aucune donnee YTD disponible</p>

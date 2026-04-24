@@ -12,6 +12,7 @@ import CompetitionView from './components/CompetitionView';
 import ShoppingView from './components/ShoppingView';
 import AssistantView from './components/AssistantView';
 import ShoppingScoringCharts from './components/ShoppingScoringCharts';
+import AccordionSection from './components/AccordionSection';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
@@ -37,6 +38,7 @@ export default function App() {
   const dataSource = modeData?.source;
   const kpis = useKpis(filters);
   const markets = useMarkets(filters);
+
   return (
     <div className="min-h-screen bg-bg-page flex flex-col">
       <Header filters={filters} onFiltersChange={setFilters} activeView={activeView} onViewChange={setActiveView} />
@@ -71,6 +73,10 @@ export default function App() {
             <GranularityTable filters={filters} />
             <MarketTable data={markets.data} isLoading={markets.isLoading} />
             <ShoppingScoringCharts brand={filters.brand} market={filters.market} from={filters.from} to={filters.to} />
+            
+            <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
+              <CampaignDrilldown filters={filters} />
+            </AccordionSection>
           </>
         )}
 
@@ -80,10 +86,6 @@ export default function App() {
 
         {activeView === 'budget' && (
           <BudgetPacing filters={filters} />
-        )}
-
-        {activeView === 'campaigns' && (
-          <CampaignDrilldown filters={filters} />
         )}
 
         {activeView === 'comarket' && (

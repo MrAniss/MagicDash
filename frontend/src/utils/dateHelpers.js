@@ -46,6 +46,13 @@ export function getPresetRange(preset) {
       return { from: fmt(subDays(today, 29)), to: fmt(today) };
     case 'MTD':
       return { from: fmt(startOfMonth(today)), to: fmt(today) };
+    case 'WTD': {
+      const mon = startOfISOWeek(today);
+      const yesterday = subDays(today, 1);
+      // If today is Monday, yesterday is Sunday (prev week), so WTD is empty or just yesterday.
+      // We'll return from Monday to yesterday.
+      return { from: fmt(mon), to: fmt(yesterday) };
+    }
     case 'QTD':
       return { from: fmt(startOfQuarter(today)), to: fmt(today) };
     case 'YTD':

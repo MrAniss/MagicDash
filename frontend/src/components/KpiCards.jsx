@@ -6,14 +6,14 @@ import { fEur, fNum, fPct, fROAS, fDelta, fAov, fCompact, fEurCompact } from '..
 const KPI_CONFIG = [
   { key: 'impressions', label: 'IMPRESSIONS',  format: fCompact,          deltaKey: 'impressions_pct', accent: '#A78BFA' },
   { key: 'clicks',      label: 'CLICS',        format: fCompact,          deltaKey: 'clicks_pct',      accent: '#60A5FA' },
-  { key: 'cpc',         label: 'CPC',          format: v => fEur(v, true),deltaKey: 'cpc_pct',         accent: '#F59E0B', invert: true },
   { key: 'ctr',         label: 'CTR',          format: v => v != null && !isNaN(v) ? v.toFixed(2) + '%' : '\u2014', deltaKey: 'ctr_pct', accent: '#D4537E' },
-  { key: 'cvr',         label: 'CVR',          format: fPct,              deltaKey: 'cvr_pct',         accent: '#1A2E4A' },
   { key: 'spend',       label: 'SPEND',        format: fEurCompact,       deltaKey: 'spend_pct',       accent: '#378ADD', neutral: true },
-  { key: 'revenue',     label: 'REVENUE',      format: fEurCompact,       deltaKey: 'revenue_pct',     accent: '#00E89A' },
-  { key: 'roas',        label: 'ROAS',         format: fROAS,             deltaKey: 'roas_pct',        accent: '#00B87A' },
+  { key: 'cpc',         label: 'CPC',          format: v => fEur(v, true),deltaKey: 'cpc_pct',         accent: '#F59E0B', invert: true },
   { key: 'conversions', label: 'CONVERSIONS',  format: fCompact,          deltaKey: 'conversions_pct', accent: '#F5A623' },
+  { key: 'revenue',     label: 'REVENUE',      format: fEurCompact,       deltaKey: 'revenue_pct',     accent: '#00E89A' },
+  { key: 'cvr',         label: 'CVR',          format: fPct,              deltaKey: 'cvr_pct',         accent: '#1A2E4A' },
   { key: 'aov',         label: 'PANIER MOYEN', format: fAov,              deltaKey: 'aov_pct',         accent: '#7F77DD' },
+  { key: 'roas',        label: 'ROAS',         format: fROAS,             deltaKey: 'roas_pct',        accent: '#00B87A' },
 ];
 
 function Skeleton() {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getCurrentMonth } from '../utils/dateHelpers';
-import { fEur, fNum, fROAS, fAov, fDelta } from '../utils/formatters';
+import { fEur, fNum, fROAS, fAov, fDelta, fEurInt } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
 import BudgetDailyChart from './BudgetDailyChart';
 import { API_URL } from '../utils/api';
@@ -84,8 +84,8 @@ function PacingBar({ spendToDate, theoreticalSpend, budget }) {
         <div className="absolute -top-5 -translate-x-1/2 text-[9px] text-navy-muted whitespace-nowrap font-medium">Theorique</div>
       </div>
       <div className="absolute inset-0 flex items-center justify-between px-3 text-[10px] font-semibold">
-        <span className="text-white z-10">{fEur(spendToDate)}</span>
-        <span className="text-navy-muted">{fEur(budget)}</span>
+        <span className="text-white z-10">{fEurInt(spendToDate)}</span>
+        <span className="text-navy-muted">{fEurInt(budget)}</span>
       </div>
     </div>
   );
@@ -226,11 +226,11 @@ export default function BudgetPacing({ filters }) {
             <div className="grid grid-cols-2 gap-6 mb-6">
               <div>
                 <p className="text-[11px] uppercase text-navy-muted font-medium tracking-[0.06em] mb-1">Budget</p>
-                <p className="text-xl font-bold text-navy">{fEur(budget)}</p>
+                <p className="text-xl font-bold text-navy">{fEurInt(budget)}</p>
               </div>
               <div>
                 <p className="text-[11px] uppercase text-navy-muted font-medium tracking-[0.06em] mb-1">Depense a date</p>
-                <p className="text-xl font-bold text-navy">{fEur(cost.to_date)}</p>
+                <p className="text-xl font-bold text-navy">{fEurInt(cost.to_date)}</p>
               </div>
             </div>
             <PacingBar spendToDate={cost.to_date} theoreticalSpend={theoreticalSpend} budget={budget} />
@@ -244,7 +244,7 @@ export default function BudgetPacing({ filters }) {
                 <div className="text-center flex-1">
                   <p className="text-[10px] uppercase text-navy-muted font-medium tracking-[0.06em] mb-1">% Consomme</p>
                   <p className="text-xl font-bold text-navy">{((cost.to_date / budget) * 100).toFixed(1)}%</p>
-                  <p className="text-[10px] text-navy-muted mt-0.5">{fEur(cost.to_date)} / {fEur(budget)}</p>
+                  <p className="text-[10px] text-navy-muted mt-0.5">{fEurInt(cost.to_date)} / {fEurInt(budget)}</p>
                 </div>
                 <div className="w-px h-12 bg-border mx-2" />
                 <div className="text-center flex-1">
@@ -265,7 +265,7 @@ export default function BudgetPacing({ filters }) {
                   <div key={p.label} className="flex items-center justify-between">
                     <span className="text-sm text-navy-muted">{p.label}</span>
                     <div className="flex items-center gap-2">
-                      <span className={`text-base font-semibold ${p.color}`}>{fEur(p.value)}</span>
+                      <span className={`text-base font-semibold ${p.color}`}>{fEurInt(p.value)}</span>
                       {budget > 0 && (
                         <span className={`text-[11px] font-medium px-2 py-0.5 rounded-[6px] ${p.value > budget ? 'bg-danger-bg text-danger' : 'bg-success-bg text-success'}`}>
                           {p.value > budget ? 'Over' : 'Under'}
@@ -409,12 +409,12 @@ export default function BudgetPacing({ filters }) {
                         <MarketLabel market={m.market} showFullName />
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{m.budget > 0 ? fEur(m.budget) : '\u2014'}</td>
-                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEur(m.spend_to_date)}</td>
+                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{m.budget > 0 ? fEurInt(m.budget) : '\u2014'}</td>
+                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEurInt(m.spend_to_date)}</td>
                     <td className={`px-4 py-3 text-right font-semibold group-hover:text-white ${m.budget > 0 ? (m.pacing_pct > 105 ? 'text-danger' : m.pacing_pct < 85 ? 'text-warning' : 'text-success') : 'text-navy-muted'}`}>
                       {m.budget > 0 ? m.pacing_pct.toFixed(1) + '%' : '\u2014'}
                     </td>
-                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEur(m.projection_base)}</td>
+                    <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEurInt(m.projection_base)}</td>
                     <td className="px-4 py-3 text-right text-navy group-hover:text-white">{fEur(m.daily_actual, true)}</td>
                     <td className={`px-4 py-3 text-right font-semibold group-hover:text-white ${m.budget > 0 ? (m.daily_delta >= 0 ? 'text-success' : 'text-danger') : 'text-navy-muted'}`}>
                       {m.budget > 0 && m.daily_target > 0 ? fEur(m.daily_target, true) : '—'}

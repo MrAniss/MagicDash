@@ -52,20 +52,22 @@ export function useGranularity({ brand, market, from, to, compareTo, granularity
   });
 }
 
-export function useComarketData({ from, to, compareTo }) {
+export function useComarketData({ from, to, compareTo, partnerBrand }) {
   return useQuery({
-    queryKey: ['comarket', from, to, compareTo],
-    queryFn: () => fetchApi('/api/comarket', { from, to, compareTo }),
+    queryKey: ['comarket', from, to, compareTo, partnerBrand],
+    queryFn: () => fetchApi('/api/comarket', { from, to, compareTo, partnerBrand }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
-export function useTrendYtd({ brand, market, granularity }) {
-  const { includeComarket } = useComarket();
+export function useTrendYtd({ brand, market, granularity, includeComarket: includeComarketOverride, onlyComarket, partnerBrand }) {
+  const { includeComarket: globalIncludeComarket } = useComarket();
+  const includeComarket = includeComarketOverride !== undefined ? includeComarketOverride : globalIncludeComarket;
+  
   return useQuery({
-    queryKey: ['trendYtd', brand, market, granularity, includeComarket],
-    queryFn: () => fetchApi('/api/trend/ytd', { brand, market, granularity, includeComarket }),
+    queryKey: ['trendYtd', brand, market, granularity, includeComarket, onlyComarket, partnerBrand],
+    queryFn: () => fetchApi('/api/trend/ytd', { brand, market, granularity, includeComarket, onlyComarket, partnerBrand }),
     staleTime: 60 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
@@ -120,6 +122,15 @@ export function useGA4BounceRateYtd({ brand, market, source, granularity = 'week
   return useQuery({
     queryKey: ['ga4BounceRateYtd', brand, market, source, granularity],
     queryFn: () => fetchApi('/api/ga4/bounce-rate-ytd', { brand, market, source, granularity }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useGA4TrendYtd({ brand, market, granularity, sourceMedium }) {
+  return useQuery({
+    queryKey: ['ga4TrendYtd', brand, market, granularity, sourceMedium],
+    queryFn: () => fetchApi('/api/ga4/trend/ytd', { brand, market, granularity, sourceMedium }),
+    staleTime: 60 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
 }

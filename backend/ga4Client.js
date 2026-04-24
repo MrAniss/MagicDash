@@ -315,6 +315,52 @@ function combineFilters(f1, f2) {
   return { andGroup: { expressions: exprs } };
 }
 
+export async function getGA4Rows({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_rows_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const properties = resolvePropertyIds(brand);
+  const metrics = ['sessions', 'totalRevenue', 'transactions', 'totalUsers'];
+
+  let allRows = [];
+  for (const [bKey, propId] of properties) {
+    const filter = combineFilters(
+      buildStreamFilter(bKey, market),
+      buildSourceMediumFilter(sourceMedium)
+    );
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['date'],
+      metrics,
+      dimensionFilter: filter,
+    }).catch(err => {
+      console.error(`GA4 rows query error (${bKey}):`, err.message);
+      return [];
+    });
+    allRows.push(...rows);
+  }
+
+  // Aggregate by date (in case of multiple properties)
+  const grouped = {};
+  for (const row of allRows) {
+    if (!grouped[row.date]) {
+      grouped[row.date] = { date: row.date, sessions: 0, revenue: 0, transactions: 0, users: 0 };
+    }
+    grouped[row.date].sessions += row.sessions;
+    grouped[row.date].revenue += row.totalRevenue;
+    grouped[row.date].transactions += row.transactions;
+    grouped[row.date].users += row.totalUsers;
+  }
+
+  const result = Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+  setCache(cacheKey, result);
+  return result;
+}
+
 export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
   const filterTag  = resolveFilterTag(brand, market);
   const cacheKey   = `ga4_kpis_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;

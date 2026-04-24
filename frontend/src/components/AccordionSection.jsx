@@ -1,50 +1,47 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 
-/**
- * Accordéon réutilisable avec lazy loading.
- * Les children ne sont rendus que lorsque `isOpen` est true — les consommateurs
- * peuvent ainsi conditionner leurs useQuery via `enabled: isOpen` pour ne fetch
- * que lorsque la section est ouverte.
- */
-export default function AccordionSection({
-  title,
-  subtitle = null,
-  badge = null,
-  isOpen,
-  onToggle,
-  children,
-}) {
+export default function AccordionSection({ title, children, badge, defaultOpen = false }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [hasBeenOpened, setHasBeenOpened] = useState(defaultOpen);
+
+  // Déclencher le chargement dès qu'on clique sur "ouvrir"
+  const handleToggle = () => {
+    if (!isOpen) {
+      setHasBeenOpened(true);
+    }
+    setIsOpen(!isOpen);
+  };
+
   return (
     <div className="bg-white rounded-card border border-border shadow-card overflow-hidden">
       <button
-        type="button"
-        onClick={onToggle}
-        className="w-full px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-page transition-colors text-left"
+        onClick={handleToggle}
+        className="w-full flex items-center justify-between px-6 py-4 hover:bg-bg-page transition-colors outline-none text-left"
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <svg
-            className={`w-4 h-4 text-navy-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-90' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          <h3 className="text-base font-semibold text-navy truncate">{title}</h3>
-          {badge != null && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-bg-page text-navy-muted border border-border">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold text-navy">{title}</h3>
+          {badge && (
+            <span className="text-[10px] font-bold text-white bg-navy px-2 py-0.5 rounded-full uppercase tracking-wider">
               {badge}
             </span>
           )}
         </div>
-        {subtitle && (
-          <span className="text-xs text-navy-muted flex-shrink-0 ml-3">{subtitle}</span>
-        )}
+        <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+          <svg className="w-5 h-5 text-navy-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
       </button>
 
-      {isOpen && (
-        <div className="px-6 pb-6 pt-0 border-t border-border">
-          {children}
+      <div
+        className={`transition-all duration-500 ease-in-out overflow-hidden ${
+          isOpen ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        <div className="px-6 pb-6 pt-2 border-t border-border/40">
+          {hasBeenOpened && children}
         </div>
-      )}
+      </div>
     </div>
   );
 }
