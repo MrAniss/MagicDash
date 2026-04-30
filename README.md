@@ -2,6 +2,8 @@
 
 Dashboard de pilotage **Paid Search multi-marques / multi-marchés**. Centralise Google Ads, GA4, Search Console, Merchant Center et budgets Google Sheets dans une seule interface React.
 
+![Aperçu du dashboard](docs/screenshots/dashboard-overview.png)
+
 ---
 
 ## Sommaire
@@ -27,11 +29,24 @@ Dashboard de pilotage **Paid Search multi-marques / multi-marchés**. Centralise
 
 Le dashboard fournit, pour les marques et marchés que tu configures :
 
-- **Paid Search** — KPIs consolidés (spend, revenue, ROAS, conversions, CVR…), tendance YTD, détail par campagne, performance par marché, bilan hebdo automatique.
-- **Budget** — pacing mensuel vs réel, projection fin de mois, spend journalier YTD.
-- **Shopping** — price competitiveness, top/flop produits & marques, qualité du flux Merchant Center, scoring PMax.
-- **Analytics (GA4)** — sessions, transactions, revenue, funnel d'achat, bounce rate, CVR/AOV.
-- **Comarket** — vue partenaires (campagnes co-financées).
+### Paid Search
+KPIs consolidés (spend, revenue, ROAS, conversions, CVR…), tendance YTD, détail par campagne, performance par marché, bilan hebdo automatique.
+
+### Budget
+Pacing mensuel vs réel, projection fin de mois, spend journalier YTD.
+
+![Vue Budget](docs/screenshots/view-budget.png)
+
+### Shopping
+Price competitiveness, top/flop produits & marques, qualité du flux Merchant Center, scoring PMax.
+
+### Analytics (GA4)
+Sessions, transactions, revenue, funnel d'achat, bounce rate, CVR/AOV.
+
+![Vue Analytics GA4](docs/screenshots/view-analytics.png)
+
+### Comarket
+Vue partenaires (campagnes co-financées).
 
 Toutes les données sont récupérées en live depuis les APIs Google et mises en cache (TTL 1h par défaut).
 
