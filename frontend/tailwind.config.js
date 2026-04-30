@@ -7,6 +7,7 @@ export default {
         'bg-page': '#F4F6F9',
         'bg-card': '#FFFFFF',
         'bg-card2': '#F0F4FF',
+        'bg-zebra': '#FAFBFD',
         'navy': { DEFAULT: '#1A2E4A', light: '#243660', muted: '#8896B0' },
         'mint': { DEFAULT: '#00E89A', dark: '#00B87A', bg: '#E8FDF5' },
         'success': '#00B87A',

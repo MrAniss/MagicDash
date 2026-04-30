@@ -135,3 +135,12 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .claude/worktrees/nervous-liskov/
+
+# Project-specific
+backend/tokens.json
+backend_logs.txt
+backend/server.log
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm

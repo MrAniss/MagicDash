@@ -8,10 +8,9 @@ import BudgetPacing from './components/BudgetPacing';
 import CampaignDrilldown from './components/CampaignDrilldown';
 import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
-import CompetitionView from './components/CompetitionView';
 import ShoppingView from './components/ShoppingView';
-import AssistantView from './components/AssistantView';
 import ShoppingScoringCharts from './components/ShoppingScoringCharts';
+import WeeklyPerformanceSummary from './components/WeeklyPerformanceSummary';
 import AccordionSection from './components/AccordionSection';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
@@ -22,9 +21,17 @@ function loadFilters() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   const range = getPresetRange('last_week');
-  return { brand: 'ALL', market: 'ALL', preset: 'last_week', compareTo: 'previous_period', ...range };
+  return {
+    brand: 'ALL',
+    market: 'ALL',
+    preset: 'last_week',
+    compareTo: 'previous_period',
+    ...range,
+  };
 }
 
 export default function App() {
@@ -41,13 +48,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg-page flex flex-col">
-      <Header filters={filters} onFiltersChange={setFilters} activeView={activeView} onViewChange={setActiveView} />
+      <Header
+        filters={filters}
+        onFiltersChange={setFilters}
+        activeView={activeView}
+        onViewChange={setActiveView}
+      />
 
       <main className="w-full max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {dataSource === 'sheets' && (
           <div className="bg-success-bg border border-success/20 rounded-card px-4 py-2.5 text-xs text-success font-medium flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-success" />
-            <span><strong>Google Sheets</strong> — Donnees importees depuis les rapports planifies Google Ads.</span>
+            <span>
+              <strong>Google Sheets</strong> — Donnees importees depuis les rapports planifies
+              Google Ads.
+            </span>
           </div>
         )}
 
@@ -62,58 +77,59 @@ export default function App() {
         {kpis.isError && kpis.data && (
           <div className="bg-warning-bg border border-warning/20 rounded-card px-4 py-2 text-[11px] text-warning font-medium flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-            Donnees en cache — {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+            Donnees en cache —{' '}
+            {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
 
         {activeView === 'dashboard' && (
           <>
+            <AccordionSection
+              title="Bilan de la semaine dernière"
+              badge="Insights"
+              isOpenDefault={false}
+            >
+              <WeeklyPerformanceSummary brand={filters.brand} market={filters.market} />
+            </AccordionSection>
+
             <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
             <CostKpiChart filters={filters} />
             <GranularityTable filters={filters} />
             <MarketTable data={markets.data} isLoading={markets.isLoading} />
-            <ShoppingScoringCharts brand={filters.brand} market={filters.market} from={filters.from} to={filters.to} />
-            
+
+            <AccordionSection
+              title="Analyse par Scoring Shopping"
+              badge="Scoring"
+              isOpenDefault={false}
+            >
+              <ShoppingScoringCharts
+                brand={filters.brand}
+                market={filters.market}
+                from={filters.from}
+                to={filters.to}
+              />
+            </AccordionSection>
+
             <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
               <CampaignDrilldown filters={filters} />
             </AccordionSection>
           </>
         )}
 
-        {activeView === 'analytics' && (
-          <GA4View filters={filters} />
-        )}
+        {activeView === 'analytics' && <GA4View filters={filters} />}
 
-        {activeView === 'budget' && (
-          <BudgetPacing filters={filters} />
-        )}
+        {activeView === 'budget' && <BudgetPacing filters={filters} />}
 
-        {activeView === 'comarket' && (
-          <ComarketView filters={filters} />
-        )}
+        {activeView === 'comarket' && <ComarketView filters={filters} />}
 
-        {activeView === 'competition' && (
-          <CompetitionView />
-        )}
-
-        {activeView === 'shopping' && (
-          <ShoppingView filters={filters} />
-        )}
-
-        {activeView === 'assistant' && (
-          <AssistantView />
-        )}
-
+        {activeView === 'shopping' && <ShoppingView filters={filters} />}
       </main>
 
       <footer className="mt-auto py-5 text-center border-t border-border">
         <span className="text-xs text-navy-muted tracking-widest uppercase select-none">
-          Made with{' '}
-          <span className="text-danger mx-0.5">♥</span>
-          {' '}· Dhygietal
+          Made with <span className="text-danger mx-0.5">♥</span> · Dhygietal
         </span>
       </footer>
-
     </div>
   );
 }

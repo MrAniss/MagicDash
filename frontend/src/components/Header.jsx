@@ -13,10 +13,54 @@ const BRAND_TABS = [
 ];
 
 const MARKETS_BY_BRAND = {
-  ALL:                    ['ALL','FR','BE','NL','DE','IT','ES','UK','AT','PT','LU','SE','NO','FI','PL','IE','RO','SA','CA','AU','US'],
-  COCOONCENTER:           ['ALL','FR','BE','NL','DE','IT','ES','UK','AT','PT','LU','SE','NO','FI','PL','IE','RO','SA','CA','AU','US'],
-  PASCAL_COSTE:           ['ALL','FR'],
-  PARAPHARMACIE_LAFAYETTE:['ALL','FR'],
+  ALL: [
+    'ALL',
+    'FR',
+    'BE',
+    'NL',
+    'DE',
+    'IT',
+    'ES',
+    'UK',
+    'AT',
+    'PT',
+    'LU',
+    'SE',
+    'NO',
+    'FI',
+    'PL',
+    'IE',
+    'RO',
+    'SA',
+    'CA',
+    'AU',
+    'US',
+  ],
+  COCOONCENTER: [
+    'ALL',
+    'FR',
+    'BE',
+    'NL',
+    'DE',
+    'IT',
+    'ES',
+    'UK',
+    'AT',
+    'PT',
+    'LU',
+    'SE',
+    'NO',
+    'FI',
+    'PL',
+    'IE',
+    'RO',
+    'SA',
+    'CA',
+    'AU',
+    'US',
+  ],
+  PASCAL_COSTE: ['ALL', 'FR'],
+  PARAPHARMACIE_LAFAYETTE: ['ALL', 'FR'],
 };
 
 function getAvailableMarkets(brand) {
@@ -24,19 +68,14 @@ function getAvailableMarkets(brand) {
 }
 
 const VIEW_TABS = [
-  { key: 'dashboard',       label: 'Paid Search' },
-  { key: 'budget',          label: 'Budget' },
-  { key: 'comarket',        label: 'Comarket' },
-  { key: 'shopping',        label: 'Shopping' },
-  { key: 'analytics',       label: 'Analytics' },
-  // { key: 'competition',  label: 'Concurrence' },   // hidden — en attente
-  // { key: 'brand',        label: 'Brand' },          // hidden
-  // { key: 'assistant',    label: 'Assistant' },      // hidden — quota Gemini API
-  // { key: 'assets',       label: 'Assets' },         // hidden
+  { key: 'dashboard', label: 'Paid Search' },
+  { key: 'budget', label: 'Budget' },
+  { key: 'comarket', label: 'Comarket' },
+  { key: 'shopping', label: 'Shopping' },
+  { key: 'analytics', label: 'Analytics' },
 ];
 
 const PRESETS = [
-  { key: 'yesterday', label: 'Yesterday' },
   { key: 'WTD', label: 'WTD' },
   { key: 'last_week', label: 'Last Week' },
   { key: 'last_month', label: 'Last Month' },
@@ -69,7 +108,7 @@ function MarketDropdown({ value, onChange, markets }) {
     <div ref={ref} className="relative ml-1">
       {/* Trigger */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 bg-bg-page border border-border rounded-inner px-2.5 py-1 text-xs text-navy font-medium hover:border-navy-muted outline-none transition-colors"
       >
         {selected === 'ALL' ? (
@@ -77,8 +116,13 @@ function MarketDropdown({ value, onChange, markets }) {
         ) : (
           <FlagIcon market={selected} size={14} />
         )}
-        <span>{selected === 'ALL' ? 'Tous les marchés' : marketName(selected)}</span>
-        <svg className={`w-3 h-3 text-navy-muted transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <span>{selected === 'ALL' ? 'Global' : marketName(selected)}</span>
+        <svg
+          className={`w-3 h-3 text-navy-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -86,10 +130,13 @@ function MarketDropdown({ value, onChange, markets }) {
       {/* Dropdown list */}
       {open && (
         <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-border rounded-card shadow-card py-1 min-w-[170px] max-h-72 overflow-y-auto">
-          {markets.map(m => (
+          {markets.map((m) => (
             <button
               key={m}
-              onClick={() => { onChange(m); setOpen(false); }}
+              onClick={() => {
+                onChange(m);
+                setOpen(false);
+              }}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-bg-page ${selected === m ? 'font-semibold text-navy bg-bg-page' : 'text-navy-muted'}`}
             >
               {m === 'ALL' ? (
@@ -97,10 +144,20 @@ function MarketDropdown({ value, onChange, markets }) {
               ) : (
                 <FlagIcon market={m} size={14} />
               )}
-              <span>{m === 'ALL' ? 'Tous les marchés' : marketName(m)}</span>
+              <span>{m === 'ALL' ? 'Global' : marketName(m)}</span>
               {selected === m && (
-                <svg className="w-3 h-3 text-navy ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                <svg
+                  className="w-3 h-3 text-navy ml-auto"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               )}
             </button>
@@ -117,6 +174,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
   const { includeComarket, setIncludeComarket } = useComarket();
   const queryClient = useQueryClient();
   const [refreshState, setRefreshState] = useState('idle'); // idle | loading | success
+  const [rebootState, setRebootState] = useState('idle'); // idle | loading | success
 
   function handleBrand(brand) {
     onFiltersChange({ ...filters, brand, market: 'ALL' });
@@ -152,11 +210,29 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     }
   }
 
+  async function handleReboot() {
+    if (
+      rebootState === 'loading' ||
+      !window.confirm('Voulez-vous vraiment redemarrer le backend ?')
+    )
+      return;
+    setRebootState('loading');
+    try {
+      await fetch(`${API_URL}/api/system/reboot`, { method: 'POST' });
+      setRebootState('success');
+      setTimeout(() => window.location.reload(), 2000);
+    } catch {
+      setRebootState('idle');
+    }
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-border-strong shadow-header">
       <div className="max-w-[1600px] mx-auto px-6 py-3">
         {/* Top row */}
-        <div className={`flex items-center justify-between ${!['budget','competition','assistant','assets','brand'].includes(activeView) ? 'mb-3' : ''}`}>
+        <div
+          className={`flex items-center justify-between ${activeView !== 'budget' ? 'mb-3' : ''}`}
+        >
           <div className="flex items-center gap-3">
             <img
               src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
@@ -169,20 +245,97 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
           <div className="flex items-center gap-3">
             {/* View tabs */}
             <div className="flex gap-1">
-              {VIEW_TABS.map(view => (
-                <button key={view.key} onClick={() => onViewChange(view.key)}
-                  className={`relative px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${activeView === view.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
+              {VIEW_TABS.map((view) => (
+                <button
+                  key={view.key}
+                  onClick={() => onViewChange(view.key)}
+                  className={`relative px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${activeView === view.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}
+                >
                   {view.label}
                 </button>
               ))}
             </div>
 
             {authenticated ? (
-              <span className="text-xs text-success flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-success" />Connected
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-success flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                  Connected
+                </span>
+                <button
+                  onClick={handleReboot}
+                  disabled={rebootState === 'loading'}
+                  className={`p-1 rounded-inner border transition-colors ${
+                    rebootState === 'success'
+                      ? 'border-success text-success bg-success-bg'
+                      : 'border-border text-navy-muted hover:text-danger hover:border-danger'
+                  }`}
+                  title="Redémarrer le backend"
+                  aria-label="Redémarrer le backend"
+                >
+                  <svg
+                    className={`w-3.5 h-3.5 ${rebootState === 'loading' ? 'animate-spin' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshState === 'loading'}
+                  className={`p-1 rounded-inner border transition-colors ${
+                    refreshState === 'success'
+                      ? 'border-success text-success bg-success-bg'
+                      : refreshState === 'loading'
+                        ? 'border-border text-navy-muted cursor-wait'
+                        : 'border-border text-navy-muted hover:text-navy hover:border-navy-muted'
+                  }`}
+                  title="Rafraîchir les données (vide les caches)"
+                  aria-label="Rafraîchir les données"
+                >
+                  {refreshState === 'success' ? (
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className={`w-3.5 h-3.5 ${refreshState === 'loading' ? 'animate-spin' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
             ) : (
-              <a href="/auth/login" className="text-xs bg-navy text-white px-3 py-1.5 rounded-inner font-medium hover:bg-navy-light transition-colors">
+              <a
+                href="/auth/login"
+                className="text-xs bg-navy text-white px-3 py-1.5 rounded-inner font-medium hover:bg-navy-light transition-colors"
+              >
                 Connecter Google Ads
               </a>
             )}
@@ -190,14 +343,17 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         </div>
 
         {/* Bottom row — hidden on views with own controls */}
-        {!['budget','competition','assistant','assets','brand'].includes(activeView) && (
+        {activeView !== 'budget' && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
             <div className="flex items-center gap-2">
               <div className="flex gap-1">
-                {BRAND_TABS.map(tab => (
-                  <button key={tab.key} onClick={() => handleBrand(tab.key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${filters.brand === tab.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}>
+                {BRAND_TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleBrand(tab.key)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${filters.brand === tab.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy hover:bg-bg-page'}`}
+                  >
                     {tab.label}
                   </button>
                 ))}
@@ -214,68 +370,63 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
             {/* Date controls */}
             <div className="flex items-center gap-2">
               <div className="flex bg-bg-page rounded-inner p-0.5">
-                {PRESETS.map(p => (
-                  <button key={p.key} onClick={() => handlePreset(p.key)}
-                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filters.preset === p.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}>
+                {PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => handlePreset(p.key)}
+                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filters.preset === p.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}
+                  >
                     {p.label}
                   </button>
                 ))}
               </div>
 
-              <input type="date" value={filters.from} onChange={e => handleDateChange('from', e.target.value)}
-                className="bg-bg-page text-navy text-xs px-2 py-1 rounded-inner border border-border focus:border-navy outline-none" />
+              <input
+                type="date"
+                value={filters.from}
+                onChange={(e) => handleDateChange('from', e.target.value)}
+                className="bg-bg-page text-navy text-xs px-2 py-1 rounded-inner border border-border focus:border-navy outline-none"
+              />
               <span className="text-navy-muted text-xs">-</span>
-              <input type="date" value={filters.to} onChange={e => handleDateChange('to', e.target.value)}
-                className="bg-bg-page text-navy text-xs px-2 py-1 rounded-inner border border-border focus:border-navy outline-none" />
+              <input
+                type="date"
+                value={filters.to}
+                onChange={(e) => handleDateChange('to', e.target.value)}
+                className="bg-bg-page text-navy text-xs px-2 py-1 rounded-inner border border-border focus:border-navy outline-none"
+              />
 
               <div className="flex bg-bg-page rounded-inner p-0.5 ml-2">
-                {COMPARE_OPTIONS.map(opt => (
-                  <button key={opt.key} onClick={() => handleCompare(opt.key)}
-                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filters.compareTo === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}>
+                {COMPARE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => handleCompare(opt.key)}
+                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filters.compareTo === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}
+                  >
                     {opt.label}
                   </button>
                 ))}
               </div>
 
               {/* Comarket toggle */}
-              <button onClick={() => setIncludeComarket(!includeComarket)}
-                className={`ml-2 px-2.5 py-1 text-xs font-medium rounded-inner border transition-colors ${includeComarket ? 'bg-warning-bg border-warning text-warning' : 'border-border text-navy-muted hover:text-navy hover:border-navy-muted'}`}>
-                {includeComarket ? 'Comarket ON' : 'Comarket OFF'}
+              <button
+                onClick={() => setIncludeComarket(!includeComarket)}
+                className={`ml-2 px-2.5 py-1 text-xs font-medium rounded-inner border transition-colors ${includeComarket ? 'bg-warning-bg border-warning text-warning' : 'border-border text-navy-muted hover:text-navy hover:border-navy-muted'}`}
+              >
+                {includeComarket ? 'CM ON' : 'CM OFF'}
               </button>
 
-              {/* Refresh button */}
-              <button onClick={handleRefresh} disabled={refreshState === 'loading'}
-                className={`ml-1 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-inner border transition-colors ${
-                  refreshState === 'success'
-                    ? 'border-success text-success bg-success-bg'
-                    : refreshState === 'loading'
-                    ? 'border-border text-navy-muted cursor-wait'
-                    : 'border-border text-navy-muted hover:text-navy hover:border-navy-muted'
-                }`}
-                title="Rafraichir les donnees">
-                {refreshState === 'success' ? (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    <span>OK</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className={`w-3.5 h-3.5 ${refreshState === 'loading' ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <span>{refreshState === 'loading' ? 'Mise a jour...' : 'Rafraichir'}</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
         )}
 
         {/* Comarket warning banner */}
-        {!['budget','competition','assistant','assets','brand'].includes(activeView) && includeComarket && (
+        {activeView !== 'budget' && includeComarket && (
           <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
             <span>&#9888;</span>
-            <span><strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees par les partenaires.</span>
+            <span>
+              <strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees
+              par les partenaires.
+            </span>
           </div>
         )}
       </div>

@@ -48,16 +48,28 @@ const MC_MARKET = {
     RO: { merchantId: '5748405752', countryCode: 'RO' },
     SE: { merchantId: '5752364749', countryCode: 'SE' },
   },
+  PASCAL_COSTE: {
+    FR: { merchantId: '9831411', countryCode: 'FR' },
+  },
+  PARAPHARMACIE_LAFAYETTE: {
+    FR: { merchantId: '510562869', countryCode: 'FR' },
+  },
 };
 
 // Returns [{ merchantId, countryCode }] for a given brand + market.
 // For market='ALL', returns all accounts with countryCode=null (no country filter).
 function getMcTargets(brand, market = 'ALL') {
-  if (market !== 'ALL' && MC_MARKET[brand]?.[market]) {
-    return [MC_MARKET[brand][market]];
+  const bKey = (brand || '').toUpperCase();
+  if (market !== 'ALL' && MC_MARKET[bKey]?.[market]) {
+    return [MC_MARKET[bKey][market]];
   }
-  if (brand === 'ALL') return Object.values(MC_CONFIG).flat().map(id => ({ merchantId: id, countryCode: null }));
-  return (MC_CONFIG[brand] ?? []).map(id => ({ merchantId: id, countryCode: null }));
+  if (bKey === 'ALL') return Object.values(MC_CONFIG).flat().map(id => ({ merchantId: id, countryCode: null }));
+  
+  // For PASCAL_COSTE and PARAPHARMACIE_LAFAYETTE, if market is ALL, return the single account they have
+  if (MC_CONFIG[bKey]) {
+     return MC_CONFIG[bKey].map(id => ({ merchantId: id, countryCode: (market === 'ALL' ? null : market) }));
+  }
+  return [];
 }
 
 // ─── Price conversion ─────────────────────────────────────

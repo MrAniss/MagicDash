@@ -1,4 +1,16 @@
-import { format, subDays, startOfMonth, startOfQuarter, startOfYear, parseISO, getISOWeek, startOfISOWeek, endOfISOWeek, setISOWeek, getYear } from 'date-fns';
+import {
+  format,
+  subDays,
+  startOfMonth,
+  startOfQuarter,
+  startOfYear,
+  parseISO,
+  getISOWeek,
+  startOfISOWeek,
+  endOfISOWeek,
+  setISOWeek,
+  getYear,
+} from 'date-fns';
 
 export function fmt(date) {
   return format(date, 'yyyy-MM-dd');
@@ -13,7 +25,7 @@ export function getLastCompleteWeek() {
   lastMonday.setDate(lastSunday.getDate() - 6);
   return {
     from: fmt(lastMonday),
-    to: fmt(lastSunday)
+    to: fmt(lastSunday),
   };
 }
 
@@ -24,7 +36,7 @@ export function getSameISOWeekPreviousYear(from) {
   );
   return {
     from: fmt(prevYearMon),
-    to: fmt(endOfISOWeek(prevYearMon))
+    to: fmt(endOfISOWeek(prevYearMon)),
   };
 }
 

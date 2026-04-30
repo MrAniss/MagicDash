@@ -1,7 +1,12 @@
 import { useState, useMemo } from 'react';
 import {
-  ComposedChart, Bar, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
 } from 'recharts';
 import { useGA4TrendYtd } from '../hooks/useAdsData';
@@ -12,7 +17,7 @@ const KPI_OPTIONS = [
     value: 'roas',
     label: 'ROAS (GA4/Ads)',
     format: fROAS,
-    axisFormat: v => v?.toFixed(1) + '×',
+    axisFormat: (v) => v?.toFixed(1) + '×',
   },
   {
     value: 'sessions',
@@ -36,40 +41,63 @@ const KPI_OPTIONS = [
     value: 'cvr',
     label: 'CVR (GA4)',
     format: fPct,
-    axisFormat: v => v?.toFixed(1) + '%',
+    axisFormat: (v) => v?.toFixed(1) + '%',
+  },
+  {
+    value: 'bounceRate',
+    label: 'Taux de Rebond',
+    format: fPct,
+    axisFormat: (v) => v?.toFixed(1) + '%',
+  },
+  {
+    value: 'newCustomersRate',
+    label: '% Nouveaux clients',
+    format: fPct,
+    axisFormat: (v) => v?.toFixed(1) + '%',
   },
   {
     value: 'aov',
     label: 'Panier moyen (GA4)',
     format: fAov,
-    axisFormat: v => v != null ? Math.round(v) + ' €' : '—',
+    axisFormat: (v) => (v != null ? Math.round(v) + ' €' : '—'),
   },
 ];
 
 const GRANULARITIES = [
-  { value: 'day',   label: 'Jour' },
-  { value: 'week',  label: 'Semaine' },
+  { value: 'day', label: 'Jour' },
+  { value: 'week', label: 'Semaine' },
   { value: 'month', label: 'Mois' },
 ];
 
-function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  kpiOption,
+  seriesData,
+  primaryKey,
+  primaryName,
+  primaryFormatFull,
+}) {
   if (!active || !payload?.length) return null;
 
-  const entry = seriesData?.find(d => d.label === label || d.period === label);
-  const cost   = payload.find(p => p.dataKey === 'cost')?.value;
-  const kpiVal = payload.find(p => p.dataKey === kpiOption?.value)?.value;
+  const entry = seriesData?.find((d) => d.label === label || d.period === label);
+  const primaryVal = payload.find((p) => p.dataKey === primaryKey)?.value;
+  const kpiVal = payload.find((p) => p.dataKey === kpiOption?.value)?.value;
 
   return (
     <div className="bg-white border border-border rounded-xl px-4 py-3 shadow-lg text-[12px] min-w-[160px]">
       <p className="font-semibold text-navy mb-2 text-[13px]">{entry?.label || label}</p>
       <div className="space-y-1">
         <p className="flex justify-between gap-4">
-          <span className="text-navy-muted">Coût (Ads)</span>
-          <span className="font-medium text-navy">{fEur(cost)}</span>
+          <span className="text-navy-muted">{primaryName}</span>
+          <span className="font-medium text-navy">{primaryFormatFull(primaryVal)}</span>
         </p>
         <p className="flex justify-between gap-4">
           <span className="text-navy-muted">{kpiOption?.label}</span>
-          <span className="font-medium" style={{ color: '#00E89A' }}>{kpiOption?.format(kpiVal)}</span>
+          <span className="font-medium" style={{ color: '#00E89A' }}>
+            {kpiOption?.format(kpiVal)}
+          </span>
         </p>
         {kpiOption?.value !== 'revenue' && entry?.revenue != null && (
           <p className="flex justify-between gap-4 border-t border-border pt-1 mt-1">
@@ -83,19 +111,37 @@ function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
 }
 
 export default function GA4CostKpiChart({ filters, sourceMedium }) {
+  const isCpc = sourceMedium === 'google / cpc';
+  const primaryKey = isCpc ? 'cost' : 'sessions';
+  const primaryName = isCpc ? 'Coût Ads' : 'Sessions';
+  const primaryFormat = isCpc ? fEurCompact : fCompact;
+  const primaryFormatFull = isCpc ? fEur : fNum;
+
   const [selectedKpi, setSelectedKpi] = useState('roas');
-  const [granularity, setGranularity]  = useState('week');
+  const [granularity, setGranularity] = useState('week');
+
+  const validKpiOptions = useMemo(() => {
+    return KPI_OPTIONS.filter((o) => {
+      if (!isCpc && o.value === 'roas') return false;
+      if (!isCpc && o.value === 'sessions') return false;
+      return true;
+    });
+  }, [isCpc]);
+
+  const actualSelectedKpi = validKpiOptions.find((o) => o.value === selectedKpi)
+    ? selectedKpi
+    : validKpiOptions[0].value;
 
   const { data, isLoading, isPending, isError, error } = useGA4TrendYtd({
-    brand:  filters.brand,
+    brand: filters.brand,
     market: filters.market,
     sourceMedium,
     granularity,
   });
 
   const kpiOption = useMemo(
-    () => KPI_OPTIONS.find(o => o.value === selectedKpi),
-    [selectedKpi]
+    () => validKpiOptions.find((o) => o.value === actualSelectedKpi),
+    [actualSelectedKpi, validKpiOptions]
   );
 
   if (isPending && isLoading) {
@@ -111,9 +157,11 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
       {/* Header row */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-semibold text-navy">Coût Ads & Performance GA4 — YTD</h3>
+          <h3 className="text-base font-semibold text-navy">
+            {primaryName} & Performance GA4 — YTD
+          </h3>
           <div className="flex gap-0.5 bg-bg-page rounded-lg p-0.5">
-            {GRANULARITIES.map(g => (
+            {GRANULARITIES.map((g) => (
               <button
                 key={g.value}
                 onClick={() => setGranularity(g.value)}
@@ -130,19 +178,23 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-navy-muted">Coût Ads +</span>
+          <span className="text-[12px] text-navy-muted">{primaryName} +</span>
           <div className="relative">
             <select
-              value={selectedKpi}
-              onChange={e => setSelectedKpi(e.target.value)}
+              value={actualSelectedKpi}
+              onChange={(e) => setSelectedKpi(e.target.value)}
               className="text-[13px] font-medium text-navy border border-border rounded-lg px-3 py-1.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-navy/20 appearance-none cursor-pointer"
               style={{ color: '#00E89A', borderColor: '#00E89A33' }}
             >
-              {KPI_OPTIONS.map(o => (
-                <option key={o.value} value={o.value} style={{ color: '#1A2E4A' }}>{o.label}</option>
+              {validKpiOptions.map((o) => (
+                <option key={o.value} value={o.value} style={{ color: '#1A2E4A' }}>
+                  {o.label}
+                </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-navy-muted">▾</span>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-navy-muted">
+              ▾
+            </span>
           </div>
         </div>
       </div>
@@ -150,7 +202,9 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
       <div className="flex gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm" style={{ background: '#1A2E4A' }} />
-          <span className="text-[11px] text-navy-muted">Coût Ads (€)</span>
+          <span className="text-[11px] text-navy-muted">
+            {primaryName} {isCpc ? '(€)' : ''}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-0.5 rounded" style={{ background: '#00E89A' }} />
@@ -168,14 +222,14 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
               tickLine={false}
               axisLine={false}
               interval="preserveStartEnd"
-              tickFormatter={(val) => typeof val === 'string' ? val.split(' (')[0] : val}
+              tickFormatter={(val) => (typeof val === 'string' ? val.split(' (')[0] : val)}
             />
             <YAxis
               yAxisId="left"
               tick={{ fill: '#8896B0', fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={fEurCompact}
+              tickFormatter={primaryFormat}
               width={52}
             />
             <YAxis
@@ -188,13 +242,21 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
               width={52}
             />
             <Tooltip
-              content={<CustomTooltip kpiOption={kpiOption} seriesData={data} />}
+              content={
+                <CustomTooltip
+                  kpiOption={kpiOption}
+                  seriesData={data}
+                  primaryKey={primaryKey}
+                  primaryName={primaryName}
+                  primaryFormatFull={primaryFormatFull}
+                />
+              }
               cursor={{ fill: 'rgba(26,46,74,0.04)' }}
             />
             <Bar
               yAxisId="left"
-              dataKey="cost"
-              name="Coût Ads"
+              dataKey={primaryKey}
+              name={primaryName}
               fill="#1A2E4A"
               radius={[3, 3, 0, 0]}
               maxBarSize={36}
@@ -202,7 +264,7 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
             <Line
               yAxisId="right"
               type="monotone"
-              dataKey={selectedKpi}
+              dataKey={actualSelectedKpi}
               name={kpiOption?.label}
               stroke="#00E89A"
               strokeWidth={2.5}
@@ -216,7 +278,9 @@ export default function GA4CostKpiChart({ filters, sourceMedium }) {
           {isError ? (
             <>
               <p className="text-danger text-sm font-medium">Erreur de chargement</p>
-              <p className="text-navy-muted text-[12px]">{error?.message || 'Echec du chargement des données YTD'}</p>
+              <p className="text-navy-muted text-[12px]">
+                {error?.message || 'Echec du chargement des données YTD'}
+              </p>
             </>
           ) : (
             <p className="text-navy-muted text-sm">Aucune donnee YTD disponible</p>

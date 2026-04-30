@@ -1,199 +1,86 @@
 # Dhygietal SEA Dashboard
 
-Dashboard interne de pilotage SEA multi-marques, multi-marchés, conçu pour l'agence **Dhygietal**. Centralise les données Google Ads, GA4, Merchant Center et budgets Google Sheets en une interface unifiée.
+Dashboard interne de pilotage Paid Search multi-marques / multi-marchés.
+Centralise Google Ads, GA4, Search Console, Merchant Center et les budgets Google Sheets dans une seule interface React.
 
 ---
 
 ## Sommaire
 
-- [Présentation](#présentation)
-- [Fonctionnalités](#fonctionnalités)
-- [Architecture](#architecture)
-- [Stack technique](#stack-technique)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Structure du projet](#structure-du-projet)
-- [Vues & onglets](#vues--onglets)
-- [API Backend](#api-backend)
-- [Marques & marchés supportés](#marques--marchés-supportés)
-
----
-
-## Présentation
-
-Le SEA Dashboard permet aux équipes de Dhygietal de piloter en temps réel les performances publicitaires de trois marques e-commerce santé/beauté :
-
-- **Cocooncenter** — 20 marchés internationaux
-- **Pascal Coste Shopping** — France
-- **Parapharmacie Lafayette** — France
-
-Toutes les données sont récupérées directement depuis les APIs Google (Google Ads, GA4, Merchant Center) et croisées avec les budgets définis dans Google Sheets. Aucun export manuel, aucune mise à jour fichier — tout est temps réel avec cache intelligent.
-
----
-
-## Fonctionnalités
-
-### Dashboard principal
-- **KPIs consolidés** : Spend, Revenue, ROAS, Conversions, CVR, Clics, Impressions avec comparaison période précédente ou N-1
-- **Graphique de tendance** : évolution quotidienne / hebdomadaire sur n'importe quelle période
-- **Tableau de granularité** : détail jour par jour ou semaine par semaine
-- **Tableau par marché** : performance de chaque pays en un coup d'œil
-- **Filtre par marque, marché et période** : présélections (Last Week, 7j, 30j, MTD, QTD, YTD) + dates personnalisées
-
-### Analytics GA4
-- Sessions, utilisateurs, transactions, revenue, CVR, panier moyen
-- Breakdown par canal d'acquisition (Paid Search, Organic, Direct, etc.)
-- Évolution temporelle avec comparaison de périodes
-
-### Budget & Pacing
-- Suivi du budget mensuel (depuis Google Sheets) vs dépenses réelles
-- Gauge de pacing (% vs théorique) + % de consommation simple
-- **Graphique spend journalier YTD** : courbe dépenses réelles vs cible journalière par marché, avec zones colorées over-pace (vert) / under-pace (rouge)
-- Projections fin de mois : base / optimiste (+15%) / pessimiste (-15%)
-- Daily spend cible restant pour atterrir sur le budget
-- Tableau de pacing par marché
-
-### Campagnes
-- Liste de toutes les campagnes avec métriques 7j/30j/90j
-- Filtrage par type (Search, Shopping, PMax, Display, Video, Demand Gen)
-- Résumé par type de campagne
-
-### Shopping
-- Segmentation produits : TOP, TRAFIC SANS CONV, ZOMBIE, SOUS-PERFORMANCE, STANDARD
-- Agrégation par marque produit
-- Compétitivité prix vs benchmark marché (Merchant Center)
-- Scorecards prix : Compétitif / À parité / Plus cher / Sans données
-- Top 10 produits les plus chers vs concurrence
-
-### Recommandations
-- Suggestions automatiques d'optimisation : ajustement tROAS, augmentation budget, mise en pause
-- Classification par priorité : HAUTE / MOYENNE / FAIBLE
-- Estimation de l'impact financier de chaque recommandation
-- Badge dans la navigation indiquant le nombre d'alertes haute priorité
-
-### Concurrence *(masqué, en développement)*
-- Impression share, click share, budget lost, rank lost
-- Auction Insights : positionnement vs domaines concurrents
-- Évolution dans le temps
-
-### Assistant Data *(masqué, nécessite clé Gemini)*
-- Interface conversationnelle en langage naturel (français)
-- Questions libres sur Google Ads ou GA4 : "Quel est le ROAS de la France ce mois-ci ?"
-- Gemini interprète la question → génère la requête GAQL ou GA4 → exécute → formate la réponse
-- Réponse en texte naturel + tableau + graphique auto-généré
-- Historique persisté en localStorage, mode debug avec requête générée visible
-
----
-
-## Architecture
-
-```
-Utilisateur
-    │
-    ▼
-Frontend React (Vite — port 5173)
-    │  Filtre : marque, marché, période
-    │
-    ▼
-Backend Express (Node.js — port 3001)
-    ├── Google Ads API        → métriques campagnes (spend, ROAS, conversions...)
-    ├── GA4 Data API          → métriques site (sessions, revenue, CVR...)
-    ├── Google Merchant Center → prix produits + compétitivité prix
-    ├── Google Sheets API     → budgets mensuels par marché
-    └── Gemini AI API         → interprétation langage naturel (Assistant)
-    │
-    ▼
-Agrégation + cache in-memory (15min à 3h selon la source)
-    │
-    ▼
-JSON → React Query → Recharts / tableaux HTML
-```
+1. [Stack technique](#stack-technique)
+2. [Démarrage rapide](#démarrage-rapide)
+3. [Configuration des credentials Google](#configuration-des-credentials-google)
+4. [Structure du projet](#structure-du-projet)
+5. [Configuration métier (marques, marchés, budgets)](#configuration-métier)
+6. [API backend](#api-backend)
+7. [Frontend — vues](#frontend--vues)
+8. [Base de données SQLite](#base-de-données-sqlite)
+9. [Cache & rafraîchissement](#cache--rafraîchissement)
+10. [Dépannage](#dépannage)
 
 ---
 
 ## Stack technique
 
-### Backend
-| Outil | Usage |
-|-------|-------|
-| Node.js + Express | Serveur API REST |
-| `google-ads-api` | Requêtes GAQL Google Ads |
-| `@google-analytics/data` | GA4 Data API |
-| `googleapis` | Sheets, Merchant Center, OAuth2 |
-| `@google/generative-ai` | Gemini AI (Assistant) |
+**Backend** — Node 18+, ESM, Express 4
+- `google-ads-api` (v23) — Google Ads Reporting
+- `@google-analytics/data` — GA4 Data API
+- `googleapis` — Search Console, Sheets, Merchant Center, OAuth
+- `better-sqlite3` — DB locale (audit campagnes)
 
-### Frontend
-| Outil | Usage |
-|-------|-------|
-| React 18 + Vite | UI et build |
-| TanStack Query (React Query) | Fetching + cache client |
-| Recharts | Graphiques (Line, Bar, ComposedChart) |
-| Tailwind CSS | Styles |
-| flagcdn.com | Drapeaux pays |
+**Frontend** — Vite + React 18
+- `@tanstack/react-query` — fetch + cache
+- `recharts` — graphiques
+- `tailwindcss` — design tokens dans `frontend/tailwind.config.js`
+
+**Workspaces npm** — `backend/` + `frontend/` orchestrés depuis la racine.
 
 ---
 
-## Installation
-
-### Prérequis
-- Node.js 18+
-- Accès aux APIs Google (voir Configuration)
-
-### 1. Cloner le repo
+## Démarrage rapide
 
 ```bash
-git clone https://github.com/dhygietal/dashproject.git
-cd dashproject
-```
+# 1. Installation des deux workspaces
+npm run install:all
 
-### 2. Installer les dépendances
-
-```bash
-# Depuis la racine (installe backend + frontend via workspaces)
-npm install
-```
-
-### 3. Configurer les variables d'environnement
-
-```bash
+# 2. Configurer les credentials (cf. section suivante)
 cp backend/.env.example backend/.env
-# Remplir les valeurs dans backend/.env
+#   → renseigner GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_DEVELOPER_TOKEN, GEMINI_API_KEY
+
+# 3. Lancement (back + front en parallèle)
+npm run dev:all
+#   backend  → http://localhost:3001
+#   frontend → http://localhost:5173
+
+# OU séparément
+npm run dev:back
+npm run dev:front
 ```
 
-### 4. Lancer en développement
-
-```bash
-# Backend (port 3001)
-cd backend && node server.js
-
-# Frontend (port 5173)
-cd frontend && npm run dev
-```
-
-Accès : `http://localhost:5173`
+À la première ouverture du frontend, cliquer sur **« Connecter Google »** dans le header pour lancer le flow OAuth. Le refresh token est stocké dans `backend/tokens.json` (gitignoré — ne jamais commiter).
 
 ---
 
-## Configuration
+## Configuration des credentials Google
 
-### Variables d'environnement (`backend/.env`)
+`backend/.env` :
 
-```env
-GOOGLE_CLIENT_ID=           # OAuth2 client ID (Google Cloud Console)
-GOOGLE_CLIENT_SECRET=       # OAuth2 client secret
-GOOGLE_DEVELOPER_TOKEN=     # Token développeur Google Ads
-GOOGLE_ADS_LOGIN_CUSTOMER_ID=566-480-6196   # ID MCC Cocooncenter
-GEMINI_API_KEY=             # Clé API Google AI Studio (pour l'Assistant)
-PORT=3001
-```
+| Variable | Description |
+|---|---|
+| `GOOGLE_CLIENT_ID` | OAuth Client ID (Google Cloud Console → APIs & Services → Credentials) |
+| `GOOGLE_CLIENT_SECRET` | OAuth Client Secret |
+| `GOOGLE_DEVELOPER_TOKEN` | Token Google Ads API (Ads MCC → API Center) |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | ID du MCC parent (format `XXX-XXX-XXXX`). Default : `566-480-6196` |
+| `PORT` | Port du backend (default `3001`) |
 
-### Authentification Google
+**Scopes OAuth requis** (configurés dans `backend/auth.js`) :
+- `https://www.googleapis.com/auth/adwords` (Google Ads)
+- `https://www.googleapis.com/auth/analytics.readonly` (GA4)
+- `https://www.googleapis.com/auth/webmasters.readonly` (Search Console)
+- `https://www.googleapis.com/auth/content` (Merchant Center)
+- `https://www.googleapis.com/auth/spreadsheets.readonly` (Sheets)
 
-L'authentification OAuth2 se fait via le flux `/auth/login`. Un fichier `tokens.json` est créé automatiquement après la première connexion et stocke le refresh token.
-
-### Budgets Google Sheets
-
-Les budgets mensuels sont lus depuis un Google Spreadsheet dont l'ID est défini dans `backend/config/sheets.js`. Le format attendu : une ligne par marché, une colonne par mois.
+Le compte Google qui se connecte doit avoir accès à **toutes** ces ressources (MCC Google Ads, properties GA4, Merchant Center, Sheet de budgets).
 
 ---
 
@@ -202,137 +89,168 @@ Les budgets mensuels sont lus depuis un Google Spreadsheet dont l'ID est défini
 ```
 dashproject/
 ├── backend/
-│   ├── server.js                   # Point d'entrée + endpoints principaux
-│   ├── auth.js                     # OAuth2 Google
-│   ├── googleAdsClient.js          # Client Google Ads (cache 15min)
-│   ├── ga4Client.js                # Client GA4 (cache 15min)
-│   ├── aggregation.js              # Helpers d'agrégation métriques
-│   ├── config/
-│   │   ├── accounts.js             # Comptes Google Ads par marque/marché
-│   │   ├── ga4Properties.js        # Property IDs GA4
-│   │   ├── ga4Streams.js           # Stream IDs GA4 (auto-peuplé)
-│   │   ├── budgetMarketMap.js      # Mapping marchés → budget Sheet
-│   │   └── sheets.js               # IDs Google Sheets
-│   ├── routes/
-│   │   ├── ga4.js                  # /api/ga4/*
-│   │   ├── shopping.js             # /api/shopping/*
-│   │   ├── recommendations.js      # /api/recommendations/*
-│   │   ├── competition.js          # /api/competition/*
-│   │   └── assistant.js            # /api/assistant/query
-│   └── services/
-│       ├── budgetSheetReader.js    # Lecture budgets Sheets (cache 1h)
-│       ├── merchantCenterClient.js # Prix + compétitivité MC (cache 1-3h)
-│       ├── recommendationEngine.js # Moteur de recommandations
-│       ├── geminiClient.js         # Intégration Gemini AI
-│       └── queryBuilder.js         # Exécution requêtes dynamiques (Assistant)
+│   ├── server.js              # Express app + routes principales (kpis, markets, campaigns, granularity, budget, comarket, trend/ytd)
+│   ├── auth.js                # OAuth Google + isAuthenticated()
+│   ├── googleAdsClient.js     # Client Google Ads + cache + scoring shopping
+│   ├── ga4Client.js           # Client GA4 + cache
+│   ├── searchConsoleClient.js # Client Search Console
+│   ├── aggregation.js         # Helpers d'agrégation métriques
+│   ├── dateUtils.js           # Périodes, comparaisons, formatage
+│   ├── routes/                # Routers Express montés dans server.js
+│   │   ├── ga4.js             # /api/ga4/*
+│   │   ├── shopping.js        # /api/shopping/* (scoring, top-flop, brands-detail, feed-quality, …)
+│   │   ├── recommendations.js # /api/recommendations
+│   │   └── reports.js         # /api/reports/weekly-summary
+│   ├── services/
+│   │   ├── merchantCenterClient.js  # Merchant Center (prix, statuts, price competitiveness)
+│   │   ├── budgetSheetReader.js     # Lecture budgets Google Sheets
+│   │   ├── queryBuilder.js          # Construction GAQL
+│   │   └── recommendationEngine.js  # Scoring recommandations campagnes
+│   ├── config/                # Configs métier — voir section dédiée
+│   ├── database/
+│   │   ├── schema.sql         # Schéma SQLite
+│   │   └── db.js              # better-sqlite3 wrapper
+│   ├── data/                  # SQLite files (gitignoré)
+│   ├── tokens.json            # OAuth tokens (gitignoré)
+│   └── .env                   # Credentials (gitignoré)
 │
-└── frontend/
-    └── src/
-        ├── App.jsx                 # Shell + navigation par onglets
-        ├── components/
-        │   ├── Header.jsx          # Nav, filtres marque/marché/période
-        │   ├── KpiCards.jsx        # Cartes KPI avec deltas
-        │   ├── TrendChart.jsx      # Graphique tendance
-        │   ├── GranularityTable.jsx
-        │   ├── MarketTable.jsx
-        │   ├── BudgetPacing.jsx    # Page Budget complète
-        │   ├── BudgetDailyChart.jsx
-        │   ├── CampaignDrilldown.jsx
-        │   ├── ShoppingView.jsx
-        │   ├── GA4View.jsx
-        │   ├── RecommendationsView.jsx
-        │   ├── CompetitionView.jsx
-        │   ├── ComarketView.jsx
-        │   └── AssistantView.jsx
-        ├── hooks/
-        │   ├── useAdsData.js
-        │   └── useBudget.js
-        └── utils/
-            ├── dateHelpers.js
-            ├── formatters.js
-            └── flags.jsx
+├── frontend/
+│   ├── index.html
+│   ├── tailwind.config.js     # Design tokens (couleurs, radius, shadows)
+│   ├── src/
+│   │   ├── App.jsx            # Routeur de vues (dashboard / budget / comarket / shopping / analytics)
+│   │   ├── index.css          # Tailwind + styles globaux
+│   │   ├── components/        # Composants & vues (cf. plus bas)
+│   │   ├── hooks/useAdsData.js # React Query hooks pour le backend
+│   │   ├── contexts/          # ComarketContext (toggle inclusion comarket)
+│   │   └── utils/
+│   │       ├── api.js         # fetchApi wrapper
+│   │       ├── chartColors.js # Palette charts centralisée
+│   │       ├── dateHelpers.js # Presets (last_week, MTD, QTD, YTD…)
+│   │       ├── exportTable.js # CSV download + TSV copy
+│   │       ├── formatters.js  # fEur, fNum, fPct, fROAS…
+│   │       └── flags.jsx      # Drapeaux marchés
+│
+├── package.json               # Workspaces + scripts dev:all / dev:back / dev:front
+└── README.md
 ```
 
 ---
 
-## Vues & onglets
+## Configuration métier
 
-| Onglet | Composant | Description |
-|--------|-----------|-------------|
-| Dashboard | KpiCards, TrendChart, MarketTable… | Vue principale avec tous les KPIs |
-| Analytics | GA4View | Données Google Analytics 4 |
-| Budget | BudgetPacing, BudgetDailyChart | Suivi budget mensuel et pacing journalier |
-| Campagnes | CampaignDrilldown | Détail par campagne |
-| Comarket | ComarketView | Campagnes co-financées partenaires |
-| Recommandations | RecommendationsView | Suggestions d'optimisation automatiques |
-| Shopping | ShoppingView | Performance produits + compétitivité prix |
-| Concurrence *(masqué)* | CompetitionView | Auction insights et impression share |
-| Assistant *(masqué)* | AssistantView | Requêtes en langage naturel via Gemini |
+Tous les fichiers ci-dessous sont dans `backend/config/` et exportent des constantes JS. Pas de variables d'environnement, pas de DB — édition directe.
 
----
+| Fichier | Rôle |
+|---|---|
+| `accounts.js` | Mapping marque → liste de Customer IDs Google Ads + labels marchés. **Source de vérité** pour la liste des marques/marchés. |
+| `brandKeywords.js` | Mots-clés brand utilisés pour distinguer Brand vs Generic dans certains rapports. |
+| `budgetMarketMap.js` | Mapping marchés → catégorie budget (notamment `AUTRES_PAYS_MARKETS`). |
+| `ga4Properties.js` | Mapping `[brand][market]` → GA4 Property ID. |
+| `ga4Streams.js` | Stream IDs GA4 par marché (utilisé pour filtrer par data stream). |
+| `ga4FunnelEvents.js` | Noms d'événements GA4 du tunnel (view_item, add_to_cart, …). |
+| `gscProperties.js` | Mapping marchés → propriétés Search Console. |
+| `poasThresholds.js` | Seuil POAS de break-even par marché. **Actuellement seul COCOONCENTER.FR est rempli.** |
+| `sheets.js` | IDs des Google Sheets de budgets. |
 
-## API Backend
-
-### Principaux endpoints
-
-| Méthode | Endpoint | Paramètres |
-|---------|----------|------------|
-| GET | `/api/kpis` | `brand, market, from, to, compareTo` |
-| GET | `/api/trend` | `brand, market, from, to, granularity, compareTo` |
-| GET | `/api/markets` | `brand, from, to, compareTo` |
-| GET | `/api/campaigns` | `brand, market, from, to, type` |
-| GET | `/api/granularity` | `brand, market, from, to, granularity` |
-| GET | `/api/budget` | `brand, market, month, compareTo` |
-| GET | `/api/budget/daily-spend` | `brand, market, year` |
-| GET | `/api/ga4/kpis` | `brand, market, from, to, compareTo` |
-| GET | `/api/ga4/trend` | `brand, market, from, to, granularity` |
-| GET | `/api/ga4/channels` | `brand, market, from, to` |
-| GET | `/api/shopping/products` | `brand, market, from, to` |
-| GET | `/api/recommendations/audit` | `brand, month` |
-| POST | `/api/assistant/query` | `{ question, context }` |
-| POST | `/api/cache/clear` | — |
+> Pour ajouter un nouveau marché, modifier au minimum : `accounts.js`, `ga4Properties.js`, `gscProperties.js`, `budgetMarketMap.js` et le `MARKETS_BY_BRAND` dans `frontend/src/components/Header.jsx`.
 
 ---
 
-## Marques & marchés supportés
+## API backend
 
-### Cocooncenter
-| Marché | Compte Google Ads | GA4 Property |
-|--------|-------------------|-------------|
-| France (FR) | 432-928-8276 | 298280318 |
-| Belgique (BE) | 622-722-1825 | — |
-| Pays-Bas (NL) | 426-916-4266 | — |
-| Allemagne (DE) | 791-513-9319 | — |
-| Italie (IT) | 143-906-5278 | — |
-| Espagne (ES) | 835-420-9149 | — |
-| Royaume-Uni (UK) | 684-585-8456 | — |
-| Autriche (AT) | 892-036-9741 | — |
-| Portugal (PT) | 185-734-9056 | — |
-| Luxembourg (LU) | 339-119-3668 | — |
-| Suède (SE) | 995-360-5444 | — |
-| Norvège (NO) | 682-321-1943 | — |
-| Finlande (FI) | 418-859-4423 | — |
-| Pologne (PL) | 629-192-9054 | — |
-| Irlande (IE) | 903-581-1386 | — |
-| Roumanie (RO) | 677-043-2168 | — |
-| Arabie Saoudite (SA) | 880-717-7535 | — |
-| Canada (CA) | 998-980-4415 | — |
-| Australie (AU) | 973-987-0903 | — |
-| États-Unis (US) | 674-997-1705 | — |
+Toutes les routes nécessitent OAuth (`isAuthenticated()`) sauf indication contraire.
 
-### Pascal Coste Shopping
-| Marché | Compte Google Ads | GA4 Property |
-|--------|-------------------|-------------|
-| France (FR) | 412-763-0025 | 346986639 |
+**Server.js (inline)**
+- `GET /api/kpis` — KPIs consolidés (spend, revenue, ROAS, conversions, CVR, …)
+- `GET /api/trend` — Tendance quotidienne / hebdo / mensuelle
+- `GET /api/trend/ytd` — Tendance YTD avec comparaison N-1
+- `GET /api/markets` — Performance par marché
+- `GET /api/campaigns` — Liste campagnes (filtrage par type)
+- `GET /api/granularity` — Détail jour/semaine/mois
+- `GET /api/budget` — Pacing budget mensuel
+- `GET /api/budget/daily-spend` — Spend journalier YTD
+- `GET /api/budget/recommendations` — Recos budget
+- `GET /api/comarket` — Vue partenaires comarket
+- `GET /api/mode` — Source des données (live / sheets)
+- `GET /health` — Health check (public)
+- `POST /api/cache/clear` — Vide les caches Ads/GA4/GSC/MC/Budget
+- `POST /api/system/reboot` — Reboot soft du process
 
-### Parapharmacie Lafayette
-| Marché | Compte Google Ads | GA4 Property |
-|--------|-------------------|-------------|
-| France (FR) | 422-013-5964 | 280350749 |
+**Routers**
+- `/api/ga4/*` — `kpis`, `trend`, `channels`, `bounce-rate-ytd`, `trend/ytd`, `funnel-ytd`
+- `/api/shopping/*` — `price-summary`, `brands-detail`, `products-by-brand`, `top-flop`, `feed-quality`, `scoring`
+- `/api/recommendations` — Recommandations campagnes scorées
+- `/api/reports/weekly-summary` — Résumé hebdo (utilisé par `WeeklyPerformanceSummary`)
 
 ---
 
-## Développé par
+## Frontend — vues
 
-**Dhygietal** — Agence e-commerce spécialisée santé & beauté
-[hygie31.com](https://hygie31.com)
+5 onglets dans la barre de navigation (`Header.jsx`) :
+
+| Onglet | Composant racine | Rôle |
+|---|---|---|
+| **Paid Search** | `App.jsx` (dashboard) | KPIs + tendance + granularité + tableau marchés + scoring shopping + détail campagnes + bilan hebdo |
+| **Budget** | `BudgetPacing` + `BudgetDailyChart` | Pacing mensuel et spend journalier YTD |
+| **Comarket** | `ComarketView` | Performance partenaires comarket |
+| **Shopping** | `ShoppingView` | Price competitiveness, top/flop, feed quality, drilldown marques |
+| **Analytics** | `GA4View` | KPIs GA4, canaux, funnel, bounce rate, CVR/AOV |
+
+**Composants partagés clés** :
+- `ExportButtons` — bouton CSV + copie TSV pour Sheets (utilisé partout où il y a un tableau)
+- `KpiCards`, `MarketTable`, `GA4MarketTable`, `DrilldownTable`, `GranularityTable`
+- `AccordionSection` — sections collapsibles
+- `Header` — filtres globaux (marque / marché / preset / compareTo)
+
+Persistance des filtres dans `localStorage` (clé `sea_dashboard_filters`).
+
+---
+
+## Base de données SQLite
+
+Fichier : `backend/data/*.db` (gitignoré). Schéma : `backend/database/schema.sql`.
+
+Utilisée principalement par `routes/assets.js` (génération d'assets via Gemini) et l'audit de campagnes pour les recommandations. Création automatique au démarrage si absent.
+
+---
+
+## Cache & rafraîchissement
+
+- Google Ads, GA4, Search Console et Merchant Center ont chacun un cache mémoire dans leur client (TTL ~1h).
+- Le bouton « Refresh » du header appelle `POST /api/cache/clear` qui vide tout d'un coup.
+- React Query côté frontend a son propre cache (cf. `staleTime` dans `useAdsData.js`).
+
+---
+
+## Dépannage
+
+**`Not authenticated`** — Le refresh token est expiré ou absent. Cliquer « Connecter Google » dans le header.
+
+**`Quota exceeded` (Google Ads / GA4)** — Le cache est court-circuité. Attendre ou augmenter `staleTime`.
+
+**Données vides sur un marché** — Vérifier que le Customer ID est bien dans `accounts.js` et la GA4 property dans `ga4Properties.js`.
+
+**`tokens.json` manquant** — Normal au premier lancement. Sera créé après le premier OAuth.
+
+---
+
+## Conventions
+
+- Code en ESM (`type: module`) côté backend.
+- Frontend : design tokens via Tailwind (`tailwind.config.js`). Les couleurs Recharts qui ne peuvent pas utiliser Tailwind passent par `frontend/src/utils/chartColors.js`.
+- Naming des routes Express : pluriel pour les listes, singulier pour les concepts/agrégats. Cohérent après nettoyage.
+- ESLint + Prettier configurés côté frontend :
+  ```bash
+  cd frontend
+  npm run lint           # vérifie
+  npm run lint:fix       # corrige ce qui est auto-corrigeable
+  npm run format         # reformate tous les .js/.jsx/.css/.json
+  npm run format:check   # vérifie sans écrire
+  ```
+
+---
+
+## Licence
+
+Usage interne Dhygietal. Voir `LICENSE`.

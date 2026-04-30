@@ -12,16 +12,6 @@ export function useKpis({ brand, market, from, to, compareTo }) {
   });
 }
 
-export function useTrend({ brand, market, from, to, compareTo, granularity }) {
-  const { includeComarket } = useComarket();
-  return useQuery({
-    queryKey: ['trend', brand, market, from, to, compareTo, granularity, includeComarket],
-    queryFn: () => fetchApi('/api/trend', { brand, market, from, to, compareTo, granularity, includeComarket }),
-    enabled: !!from && !!to,
-    placeholderData: (prev) => prev,
-  });
-}
-
 export function useMarkets({ brand, from, to, compareTo }) {
   const { includeComarket } = useComarket();
   return useQuery({
@@ -36,7 +26,8 @@ export function useCampaigns({ brand, market, from, to, type, compareTo }) {
   const { includeComarket } = useComarket();
   return useQuery({
     queryKey: ['campaigns', brand, market, from, to, type, compareTo, includeComarket],
-    queryFn: () => fetchApi('/api/campaigns', { brand, market, from, to, type, compareTo, includeComarket }),
+    queryFn: () =>
+      fetchApi('/api/campaigns', { brand, market, from, to, type, compareTo, includeComarket }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -46,7 +37,16 @@ export function useGranularity({ brand, market, from, to, compareTo, granularity
   const { includeComarket } = useComarket();
   return useQuery({
     queryKey: ['granularity', brand, market, from, to, compareTo, granularity, includeComarket],
-    queryFn: () => fetchApi('/api/granularity', { brand, market, from, to, compareTo, granularity, includeComarket }),
+    queryFn: () =>
+      fetchApi('/api/granularity', {
+        brand,
+        market,
+        from,
+        to,
+        compareTo,
+        granularity,
+        includeComarket,
+      }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -61,13 +61,29 @@ export function useComarketData({ from, to, compareTo, partnerBrand }) {
   });
 }
 
-export function useTrendYtd({ brand, market, granularity, includeComarket: includeComarketOverride, onlyComarket, partnerBrand }) {
+export function useTrendYtd({
+  brand,
+  market,
+  granularity,
+  includeComarket: includeComarketOverride,
+  onlyComarket,
+  partnerBrand,
+}) {
   const { includeComarket: globalIncludeComarket } = useComarket();
-  const includeComarket = includeComarketOverride !== undefined ? includeComarketOverride : globalIncludeComarket;
-  
+  const includeComarket =
+    includeComarketOverride !== undefined ? includeComarketOverride : globalIncludeComarket;
+
   return useQuery({
     queryKey: ['trendYtd', brand, market, granularity, includeComarket, onlyComarket, partnerBrand],
-    queryFn: () => fetchApi('/api/trend/ytd', { brand, market, granularity, includeComarket, onlyComarket, partnerBrand }),
+    queryFn: () =>
+      fetchApi('/api/trend/ytd', {
+        brand,
+        market,
+        granularity,
+        includeComarket,
+        onlyComarket,
+        partnerBrand,
+      }),
     staleTime: 60 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
@@ -89,6 +105,14 @@ export function useDemoMode() {
   });
 }
 
+export function useWeeklySummary({ brand, market }) {
+  return useQuery({
+    queryKey: ['weeklySummary', brand, market],
+    queryFn: () => fetchApi('/api/reports/weekly-summary', { brand, market }),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 // ─── GA4 hooks ─────────────────────────────────────────
 
 export function useGA4Kpis({ brand, market, from, to, compareTo, sourceMedium }) {
@@ -103,7 +127,8 @@ export function useGA4Kpis({ brand, market, from, to, compareTo, sourceMedium })
 export function useGA4Trend({ brand, market, from, to, granularity, sourceMedium }) {
   return useQuery({
     queryKey: ['ga4Trend', brand, market, from, to, granularity, sourceMedium],
-    queryFn: () => fetchApi('/api/ga4/trend', { brand, market, from, to, granularity, sourceMedium }),
+    queryFn: () =>
+      fetchApi('/api/ga4/trend', { brand, market, from, to, granularity, sourceMedium }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -112,16 +137,18 @@ export function useGA4Trend({ brand, market, from, to, granularity, sourceMedium
 export function useGA4Channels({ brand, market, from, to, compareTo, sourceMedium }) {
   return useQuery({
     queryKey: ['ga4Channels', brand, market, from, to, compareTo, sourceMedium],
-    queryFn: () => fetchApi('/api/ga4/channels', { brand, market, from, to, compareTo, sourceMedium }),
+    queryFn: () =>
+      fetchApi('/api/ga4/channels', { brand, market, from, to, compareTo, sourceMedium }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
-export function useGA4BounceRateYtd({ brand, market, source, granularity = 'week' }) {
+export function useGA4BounceRateYtd({ brand, market, sourceMedium, granularity = 'week' }) {
   return useQuery({
-    queryKey: ['ga4BounceRateYtd', brand, market, source, granularity],
-    queryFn: () => fetchApi('/api/ga4/bounce-rate-ytd', { brand, market, source, granularity }),
+    queryKey: ['ga4BounceRateYtd', brand, market, sourceMedium, granularity],
+    queryFn: () =>
+      fetchApi('/api/ga4/bounce-rate-ytd', { brand, market, sourceMedium, granularity }),
     placeholderData: (prev) => prev,
   });
 }
@@ -135,34 +162,6 @@ export function useGA4TrendYtd({ brand, market, granularity, sourceMedium }) {
   });
 }
 
-// ─── Brand hooks ───────────────────────────────────────
-
-export function useBrandOverview({ brand, from, to }) {
-  return useQuery({
-    queryKey: ['brandOverview', brand, from, to],
-    queryFn: () => fetchApi('/api/brand/overview', { brand, from, to }),
-    enabled: !!brand && !!from && !!to,
-    placeholderData: (prev) => prev,
-  });
-}
-
-export function useBrandTrend({ brand, from, to, granularity = 'day' }) {
-  return useQuery({
-    queryKey: ['brandTrend', brand, from, to, granularity],
-    queryFn: () => fetchApi('/api/brand/trend', { brand, from, to, granularity }),
-    enabled: !!brand && !!from && !!to,
-    placeholderData: (prev) => prev,
-  });
-}
-
-export function useGA4CvrAovYtd({ brand, market, source, granularity = 'week' }) {
-  return useQuery({
-    queryKey: ['ga4CvrAovYtd', brand, market, source, granularity],
-    queryFn: () => fetchApi('/api/ga4/cvr-aov-ytd', { brand, market, source, granularity }),
-    placeholderData: (prev) => prev,
-  });
-}
-
 export function useGA4FunnelYtd({ brand, market, granularity = 'week' }) {
   return useQuery({
     queryKey: ['ga4FunnelYtd', brand, market, granularity],
@@ -170,4 +169,3 @@ export function useGA4FunnelYtd({ brand, market, granularity = 'week' }) {
     placeholderData: (prev) => prev,
   });
 }
-

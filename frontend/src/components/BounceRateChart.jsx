@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, ReferenceLine,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
 } from 'recharts';
 import { useGA4BounceRateYtd } from '../hooks/useAdsData';
 
@@ -20,7 +26,20 @@ function weekLabel(dateStr) {
 }
 
 function weekRange(dateStr) {
-  const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+  const MONTHS = [
+    'jan',
+    'fév',
+    'mar',
+    'avr',
+    'mai',
+    'jun',
+    'jul',
+    'aoû',
+    'sep',
+    'oct',
+    'nov',
+    'déc',
+  ];
   const mon = new Date(dateStr + 'T00:00:00');
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
@@ -63,7 +82,8 @@ function BounceTooltip({ active, payload, avg }) {
       </p>
       <p className="text-navy-muted mb-1">Sessions : {row.sessions.toLocaleString('fr-FR')}</p>
       <p className={isGood ? 'text-success' : 'text-danger'}>
-        vs moyenne YTD : {Number(diffPt) >= 0 ? '+' : ''}{diffPt}pt
+        vs moyenne YTD : {Number(diffPt) >= 0 ? '+' : ''}
+        {diffPt}pt
       </p>
     </div>
   );
@@ -71,14 +91,13 @@ function BounceTooltip({ active, payload, avg }) {
 
 // ─── BounceRateChart ────────────────────────────────────
 
-export default function BounceRateChart({ filters }) {
-  const [source, setSource] = useState('seo');
+export default function BounceRateChart({ filters, sourceMedium }) {
   const [granularity, setGranularity] = useState('week');
 
   const { data: result, isLoading } = useGA4BounceRateYtd({
     brand: filters.brand,
     market: filters.market,
-    source,
+    sourceMedium,
     granularity,
   });
 
@@ -87,26 +106,28 @@ export default function BounceRateChart({ filters }) {
   const { data, avg, trend, delta_pct } = result;
 
   // Y-axis domain and gradient cut-point
-  const yValues = data.map(d => d.bounce_rate).filter(v => v > 0);
+  const yValues = data.map((d) => d.bounce_rate).filter((v) => v > 0);
   const yMin = yValues.length ? Math.max(0, Math.min(...yValues) * 0.92) : 0;
   const yMax = yValues.length ? Math.max(...yValues) * 1.08 : 1;
   // avgOffset: % from top of chart where avg falls (SVG y=0 is top)
-  const avgOffset = yMax > yMin
-    ? Math.max(0, Math.min(100, ((yMax - avg) / (yMax - yMin)) * 100))
-    : 50;
+  const avgOffset =
+    yMax > yMin ? Math.max(0, Math.min(100, ((yMax - avg) / (yMax - yMin)) * 100)) : 50;
 
-  const avgPct    = (avg * 100).toFixed(1);
+  const avgPct = (avg * 100).toFixed(1);
   const trendDown = trend === 'DOWN';
 
   // Format labels based on granularity
   function getLabel(dateStr) {
     if (granularity === 'day') {
-      return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' });
+      return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', {
+        month: 'short',
+        day: 'numeric',
+      });
     }
     return weekLabel(dateStr);
   }
 
-  const chartData = data.map(d => ({ ...d, label: getLabel(d.date) }));
+  const chartData = data.map((d) => ({ ...d, label: getLabel(d.date) }));
 
   return (
     <div className="bg-white rounded-card p-6 border border-border shadow-card">
@@ -117,19 +138,22 @@ export default function BounceRateChart({ filters }) {
             <h3 className="text-lg font-semibold text-navy">
               Taux de rebond — depuis le 1er janvier
             </h3>
-            <span className="text-[9px] font-semibold text-navy-muted bg-bg-page px-1.5 py-0.5 rounded">GA4</span>
+            <span className="text-[9px] font-semibold text-navy-muted bg-bg-page px-1.5 py-0.5 rounded">
+              GA4
+            </span>
           </div>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-navy-muted">
-              Moyenne YTD :{' '}
-              <span className="font-semibold text-navy">{avgPct}%</span>
+              Moyenne YTD : <span className="font-semibold text-navy">{avgPct}%</span>
               {'  '}
               <span className={trendDown ? 'text-success' : 'text-danger'}>
-                {trendDown ? '▼' : '▲'}{' '}
-                {delta_pct >= 0 ? '+' : ''}{delta_pct.toFixed(1)}% vs 14j précédents
+                {trendDown ? '▼' : '▲'} {delta_pct >= 0 ? '+' : ''}
+                {delta_pct.toFixed(1)}% vs 14j précédents
               </span>
             </p>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${trendDown ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
+            <span
+              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${trendDown ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}
+            >
               {trendDown ? '▼ En amélioration' : '▲ En dégradation'}
             </span>
           </div>
@@ -137,30 +161,12 @@ export default function BounceRateChart({ filters }) {
 
         {/* Toggles */}
         <div className="flex gap-2 shrink-0">
-          {/* Source toggle */}
-          <div className="flex bg-bg-page rounded-inner p-0.5">
-            {[
-              { key: 'seo', label: 'SEA (google/cpc)' },
-              { key: 'all', label: 'Toutes sources' },
-            ].map(opt => (
-              <button
-                key={opt.key}
-                onClick={() => setSource(opt.key)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                  source === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
           {/* Granularity toggle */}
           <div className="flex bg-bg-page rounded-inner p-0.5">
             {[
               { key: 'day', label: 'Jour' },
               { key: 'week', label: 'Semaine' },
-            ].map(opt => (
+            ].map((opt) => (
               <button
                 key={opt.key}
                 onClick={() => setGranularity(opt.key)}
@@ -182,7 +188,7 @@ export default function BounceRateChart({ filters }) {
           <defs>
             <linearGradient id="bounceAreaGradient" x1="0" y1="0" x2="0" y2="1">
               {/* Top portion (high bounce = bad) → red */}
-              <stop offset={`${avgOffset}%`} stopColor="#EF4444" stopOpacity={0.22} />
+              <stop offset={`${avgOffset}%`} stopColor="#E8524A" stopOpacity={0.22} />
               {/* Bottom portion (low bounce = good) → mint */}
               <stop offset={`${avgOffset}%`} stopColor="#00E89A" stopOpacity={0.22} />
             </linearGradient>
@@ -200,11 +206,15 @@ export default function BounceRateChart({ filters }) {
             tick={{ fill: '#8896B0', fontSize: 11 }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={v => (v * 100).toFixed(0) + '%'}
+            tickFormatter={(v) => (v * 100).toFixed(0) + '%'}
             domain={[yMin, yMax]}
           />
 
-          <Tooltip content={({ active, payload, label }) => <BounceTooltip active={active} payload={payload} avg={avg} />} />
+          <Tooltip
+            content={({ active, payload }) => (
+              <BounceTooltip active={active} payload={payload} avg={avg} />
+            )}
+          />
 
           <ReferenceLine
             y={avg}

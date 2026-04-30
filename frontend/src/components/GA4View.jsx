@@ -1,44 +1,175 @@
-import { useState } from 'react';
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useGA4Kpis, useGA4Channels, useKpis } from '../hooks/useAdsData';
 import { fEur, fNum, fPct, fDelta, fAov, fEurCompact, fROAS } from '../utils/formatters';
 import BounceRateChart from './BounceRateChart';
 import FunnelChart from './FunnelChart';
 import GA4CostKpiChart from './GA4CostKpiChart';
+import GA4MarketTable from './GA4MarketTable';
 
 // ─── KPI config for GA4 scorecards ─────────────────────
 const GA4_KPI_CONFIG = [
-  { key: 'sessions',     label: 'SESSIONS',        format: fNum,        deltaKey: 'sessions_pct',     accent: '#378ADD' },
-  { key: 'transactions', label: 'TRANSACTIONS',    format: fNum,        deltaKey: 'transactions_pct', accent: '#F5A623' },
-  { key: 'revenue',      label: 'REVENUE',         format: fEurCompact, deltaKey: 'revenue_pct',      accent: '#00E89A' },
-  { key: 'cvr',          label: 'CVR',             format: fPct,        deltaKey: 'cvr_pct',          accent: '#1A2E4A' },
-  { key: 'aov',          label: 'PANIER MOYEN',    format: fAov,        deltaKey: 'aov_pct',          accent: '#00B87A' },
+  { key: 'sessions', label: 'SESSIONS', format: fNum, deltaKey: 'sessions_pct', accent: '#378ADD' },
+  {
+    key: 'transactions',
+    label: 'TRANSACTIONS',
+    format: fNum,
+    deltaKey: 'transactions_pct',
+    accent: '#F5A623',
+  },
+  {
+    key: 'revenue',
+    label: 'REVENUE',
+    format: fEurCompact,
+    deltaKey: 'revenue_pct',
+    accent: '#00E89A',
+  },
+  { key: 'cvr', label: 'CVR', format: fPct, deltaKey: 'cvr_pct', accent: '#1A2E4A' },
+  { key: 'aov', label: 'PANIER MOYEN', format: fAov, deltaKey: 'aov_pct', accent: '#00B87A' },
 ];
 
 const CHANNEL_COLORS = {
   'Paid Search': '#1A2E4A',
   'Organic Search': '#00B87A',
-  'Direct': '#378ADD',
-  'Referral': '#F5A623',
-  'Social': '#D4537E',
-  'Email': '#7F77DD',
-  'Display': '#9CA3AF',
+  Direct: '#378ADD',
+  Referral: '#F5A623',
+  Social: '#D4537E',
+  Email: '#7F77DD',
+  Display: '#9CA3AF',
   'Paid Social': '#E67E22',
-  'Affiliates': '#00E89A',
+  Affiliates: '#00E89A',
 };
 const DEFAULT_COLOR = '#B0BEC5';
-
-const GRAN_OPTIONS = [
-  { key: 'day', label: 'Jour' },
-  { key: 'week', label: 'Semaine' },
-  { key: 'month', label: 'Mois' },
-];
 
 function Skeleton({ h = 'h-64' }) {
   return (
     <div className="bg-white rounded-card p-6 border border-border shadow-card">
       <div className="skeleton h-4 w-40 mb-4" />
       <div className={`skeleton ${h} w-full rounded-chart`} />
+    </div>
+  );
+}
+
+function SourceDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const label =
+    value === '' ? 'Tout le trafic' : value === 'google / cpc' ? 'SEA (Google CPC)' : value;
+
+  return (
+    <div ref={ref} className="relative z-20">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center justify-between gap-3 bg-white border border-border rounded-inner px-2.5 py-1.5 text-xs text-navy font-medium hover:border-navy-muted outline-none transition-colors min-w-[160px] shadow-sm"
+      >
+        <span>{label}</span>
+        <svg
+          className={`w-3.5 h-3.5 text-navy-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-border rounded-card shadow-card py-1 min-w-[180px] max-h-80 overflow-y-auto">
+          <button
+            onClick={() => {
+              onChange('');
+              setOpen(false);
+            }}
+            className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-bg-page ${value === '' ? 'font-semibold text-navy bg-bg-page' : 'text-navy-muted'}`}
+          >
+            <span>Tout le trafic</span>
+            {value === '' && (
+              <svg
+                className="w-3 h-3 text-navy ml-auto"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              onChange('google / cpc');
+              setOpen(false);
+            }}
+            className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-bg-page ${value === 'google / cpc' ? 'font-semibold text-navy bg-bg-page' : 'text-navy-muted'}`}
+          >
+            <span>SEA (Google CPC)</span>
+            {value === 'google / cpc' && (
+              <svg
+                className="w-3 h-3 text-navy ml-auto"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            )}
+          </button>
+
+          <div className="px-3 py-1.5 mt-1 mb-0.5 text-[10px] font-semibold text-navy-muted uppercase tracking-wider bg-bg-page/50 border-y border-border/50">
+            Channels (GA4)
+          </div>
+
+          {Object.keys(CHANNEL_COLORS).map((channel) => (
+            <button
+              key={channel}
+              onClick={() => {
+                onChange(channel);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-bg-page ${value === channel ? 'font-semibold text-navy bg-bg-page' : 'text-navy-muted'}`}
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ background: CHANNEL_COLORS[channel] }}
+              />
+              <span>{channel}</span>
+              {value === channel && (
+                <svg
+                  className="w-3 h-3 text-navy ml-auto"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -50,7 +181,10 @@ function GA4KpiCards({ data, isLoading, adsData, sourceMedium }) {
   if (isLoading || !data) {
     const skeletonCount = GA4_KPI_CONFIG.length + 1 + (showCost ? 1 : 0);
     return (
-      <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${skeletonCount}, minmax(0, 1fr))` }}>
+      <div
+        className={`grid gap-4`}
+        style={{ gridTemplateColumns: `repeat(${skeletonCount}, minmax(0, 1fr))` }}
+      >
         {Array.from({ length: skeletonCount }).map((_, i) => (
           <div key={i} className="bg-white rounded-card p-5 border border-border shadow-card">
             <div className="skeleton h-2.5 w-12 mb-3" />
@@ -65,83 +199,109 @@ function GA4KpiCards({ data, isLoading, adsData, sourceMedium }) {
   const { current, previous, deltas } = data;
 
   // Computed: % nouveaux clients (newCustomers / transactions)
-  const curRate  = current.transactions  > 0 ? (current.newCustomers  / current.transactions)  * 100 : 0;
-  const prevRate = previous.transactions > 0 ? (previous.newCustomers / previous.transactions) * 100 : 0;
+  const curRate =
+    current.transactions > 0 ? (current.newCustomers / current.transactions) * 100 : 0;
+  const prevRate =
+    previous.transactions > 0 ? (previous.newCustomers / previous.transactions) * 100 : 0;
   const rateDelta = prevRate > 0 ? ((curRate - prevRate) / prevRate) * 100 : 0;
 
   // Computed: ROAS GA4 vs Ads (Revenue GA4 / Spend Ads)
-  const curRoas  = (adsData?.current?.spend > 0) ? (current.revenue / adsData.current.spend) : 0;
-  const prevRoas = (adsData?.previous?.spend > 0) ? (previous.revenue / adsData.previous.spend) : 0;
+  const curRoas = adsData?.current?.spend > 0 ? current.revenue / adsData.current.spend : 0;
+  const prevRoas = adsData?.previous?.spend > 0 ? previous.revenue / adsData.previous.spend : 0;
   const roasDelta = prevRoas > 0 ? ((curRoas - prevRoas) / prevRoas) * 100 : 0;
 
   // Build cards list dynamically
   const cards = [
-    ...GA4_KPI_CONFIG.map(kpi => ({
-      key:      kpi.key,
-      label:    kpi.label,
-      accent:   kpi.accent,
-      badge:    'GA4',
-      value:    current[kpi.key],
-      prevVal:  previous[kpi.key],
-      delta:    deltas[kpi.deltaKey],
-      format:   kpi.format,
-      invert:   false,
-      neutral:  false,
+    ...GA4_KPI_CONFIG.map((kpi) => ({
+      key: kpi.key,
+      label: kpi.label,
+      accent: kpi.accent,
+      badge: 'GA4',
+      value: current[kpi.key],
+      prevVal: previous[kpi.key],
+      delta: deltas[kpi.deltaKey],
+      format: kpi.format,
+      invert: false,
+      neutral: false,
     })),
     // % Nouveaux clients (always shown)
     {
-      key:     'newCustomersRate',
-      label:   '% NOUVEAUX CLIENTS',
-      accent:  '#C084FC',
-      badge:   'GA4',
-      value:   curRate,
+      key: 'newCustomersRate',
+      label: '% NOUVEAUX CLIENTS',
+      accent: '#C084FC',
+      badge: 'GA4',
+      value: curRate,
       prevVal: prevRate,
-      delta:   rateDelta,
-      format:  fPct,
-      invert:  false,
+      delta: rateDelta,
+      format: fPct,
+      invert: false,
       neutral: false,
     },
     // ROAS (GA4 Revenue / Ads Cost) - only when google/cpc
-    ...(showCost && adsData ? [{
-      key:     'roasAds',
-      label:   'ROAS (GA4/ADS)',
-      accent:  '#F97316',
-      badge:   'Ads',
-      value:   curRoas,
-      prevVal: prevRoas,
-      delta:   roasDelta,
-      format:  fROAS,
-      invert:  false,
-      neutral: false,
-    }] : []),
+    ...(showCost && adsData
+      ? [
+          {
+            key: 'roasAds',
+            label: 'ROAS (GA4/ADS)',
+            accent: '#F97316',
+            badge: 'Ads',
+            value: curRoas,
+            prevVal: prevRoas,
+            delta: roasDelta,
+            format: fROAS,
+            invert: false,
+            neutral: false,
+          },
+        ]
+      : []),
   ];
 
   const cols = cards.length;
 
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {cards.map(kpi => {
-        const delta      = kpi.delta ?? 0;
+      {cards.map((kpi) => {
+        const delta = kpi.delta ?? 0;
         const isPositive = delta > 0;
         const isNegative = delta < 0;
         const deltaColor = kpi.neutral
           ? 'text-navy-muted'
           : kpi.invert
-            ? (isPositive ? 'text-danger' : isNegative ? 'text-success' : 'text-navy-muted')
-            : (isPositive ? 'text-success' : isNegative ? 'text-danger' : 'text-navy-muted');
-        const arrow      = isPositive ? '▲' : isNegative ? '▼' : '';
+            ? isPositive
+              ? 'text-danger'
+              : isNegative
+                ? 'text-success'
+                : 'text-navy-muted'
+            : isPositive
+              ? 'text-success'
+              : isNegative
+                ? 'text-danger'
+                : 'text-navy-muted';
+        const arrow = isPositive ? '▲' : isNegative ? '▼' : '';
 
         return (
-          <div key={kpi.key} className="bg-white rounded-card border border-border shadow-card overflow-hidden">
+          <div
+            key={kpi.key}
+            className="bg-white rounded-card border border-border shadow-card overflow-hidden"
+          >
             <div className="h-[3px]" style={{ background: kpi.accent }} />
             <div className="px-5 py-4">
               <div className="flex items-center gap-2 mb-2">
-                <p className="text-navy-muted text-[11px] font-medium uppercase tracking-[0.06em]">{kpi.label}</p>
-                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${kpi.badge === 'Ads' ? 'bg-navy text-white' : 'text-navy-muted bg-bg-page'}`}>{kpi.badge}</span>
+                <p className="text-navy-muted text-[11px] font-medium uppercase tracking-[0.06em]">
+                  {kpi.label}
+                </p>
+                <span
+                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${kpi.badge === 'Ads' ? 'bg-navy text-white' : 'text-navy-muted bg-bg-page'}`}
+                >
+                  {kpi.badge}
+                </span>
               </div>
-              <p className="text-[28px] font-bold text-navy leading-tight mb-2">{kpi.format(kpi.value)}</p>
+              <p className="text-[28px] font-bold text-navy leading-tight mb-2">
+                {kpi.format(kpi.value)}
+              </p>
               <p className={`text-xs font-medium ${deltaColor} mb-0.5`}>
-                {arrow} {fDelta(delta, 'pct')} <span className="text-navy-muted font-normal text-[10px]">vs periode</span>
+                {arrow} {fDelta(delta, 'pct')}{' '}
+                <span className="text-navy-muted font-normal text-[10px]">vs periode</span>
               </p>
               <p className="text-navy-muted text-[11px]">{kpi.format(kpi.prevVal)}</p>
             </div>
@@ -206,18 +366,22 @@ function ReconciliationTable({ ga4Data, adsData, isLoading }) {
           <tr className="border-b border-border">
             <th className="text-left text-navy-muted text-xs font-medium py-2 px-3">Metrique</th>
             <th className="text-right text-navy-muted text-xs font-medium py-2 px-3">
-              <span className="bg-bg-page px-1.5 py-0.5 rounded text-[9px] font-semibold mr-1">GA4</span>
+              <span className="bg-bg-page px-1.5 py-0.5 rounded text-[9px] font-semibold mr-1">
+                GA4
+              </span>
               GA4
             </th>
             <th className="text-right text-navy-muted text-xs font-medium py-2 px-3">
-              <span className="bg-navy text-white px-1.5 py-0.5 rounded text-[9px] font-semibold mr-1">Ads</span>
+              <span className="bg-navy text-white px-1.5 py-0.5 rounded text-[9px] font-semibold mr-1">
+                Ads
+              </span>
               Google Ads
             </th>
             <th className="text-right text-navy-muted text-xs font-medium py-2 px-3">Ecart</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => {
+          {rows.map((row) => {
             const gap = computeGap(row.ga4Raw, row.adsRaw);
             let gapColor = 'text-navy-muted';
             if (gap.absPct > 20) gapColor = 'text-danger';
@@ -249,83 +413,168 @@ function DeltaCell({ value }) {
 }
 
 function ChannelBreakdown({ data, isLoading }) {
+  const [sortCol, setSortCol] = useState('sessions');
+  const [sortDir, setSortDir] = useState('desc');
+
   if (isLoading || !data) return <Skeleton />;
 
   const totalSessions = data.reduce((s, d) => s + d.sessions, 0);
-  const totalRevenue  = data.reduce((s, d) => s + d.revenue,  0);
+  const totalRevenue = data.reduce((s, d) => s + d.revenue, 0);
 
-  const chartData = data.map(d => ({
+  const chartData = data.map((d) => ({
     ...d,
     sessionsPct: totalSessions > 0 ? Math.round((d.sessions / totalSessions) * 10000) / 100 : 0,
-    revenuePct:  totalRevenue  > 0 ? Math.round((d.revenue  / totalRevenue)  * 10000) / 100 : 0,
+    revenuePct: totalRevenue > 0 ? Math.round((d.revenue / totalRevenue) * 10000) / 100 : 0,
     color: CHANNEL_COLORS[d.channel] || DEFAULT_COLOR,
+    // Add ncRate for sorting
+    ncRate: d.transactions > 0 ? (d.newCustomers / d.transactions) * 100 : 0,
   }));
 
-  // Column groups for readability — each group = { header, sub: [{label, render}] }
+  function handleSort(col) {
+    if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortCol(col);
+      setSortDir('desc');
+    }
+  }
+
+  const sorted = [...chartData].sort((a, b) => {
+    const va = a[sortCol] ?? 0;
+    const vb = b[sortCol] ?? 0;
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+
+  // Column groups for readability — each group = { header, sub: [{label, key, render}] }
   const colGroups = [
     {
       header: 'Sessions',
       accent: '#378ADD',
       sub: [
-        { label: 'Nb',  render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.sessions)}</td> },
-        { label: '%',   render: d => <td className="py-2 px-1.5 text-right text-navy-muted text-xs">{d.sessionsPct}%</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_sessions} /> },
+        {
+          label: 'Nb',
+          key: 'sessions',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.sessions)}</td>
+          ),
+        },
+        {
+          label: '%',
+          key: 'sessionsPct',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy-muted text-xs">{d.sessionsPct}%</td>
+          ),
+        },
+        {
+          label: 'Δ',
+          key: 'delta_sessions',
+          render: (d) => <DeltaCell value={d.delta_sessions} />,
+        },
       ],
     },
     {
       header: 'Utilisateurs',
       accent: '#7F77DD',
       sub: [
-        { label: 'Nb',  render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.users)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_users} /> },
+        {
+          label: 'Nb',
+          key: 'users',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.users)}</td>
+          ),
+        },
+        { label: 'Δ', key: 'delta_users', render: (d) => <DeltaCell value={d.delta_users} /> },
       ],
     },
     {
       header: 'Nouv. clients',
       accent: '#A78BFA',
       sub: [
-        { label: 'Nb',  render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.newCustomers)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_newCustomers} /> },
+        {
+          label: 'Nb',
+          key: 'newCustomers',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.newCustomers)}</td>
+          ),
+        },
+        {
+          label: 'Δ',
+          key: 'delta_newCustomers',
+          render: (d) => <DeltaCell value={d.delta_newCustomers} />,
+        },
       ],
     },
     {
       header: '% Nouv. cl.',
       accent: '#C084FC',
       sub: [
-        { label: 'Taux', render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fPct(d.ncRate)}</td> },
-        { label: 'Δ',    render: d => <DeltaCell value={d.delta_ncRate} /> },
+        {
+          label: 'Taux',
+          key: 'ncRate',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fPct(d.ncRate)}</td>
+          ),
+        },
+        { label: 'Δ', key: 'delta_ncRate', render: (d) => <DeltaCell value={d.delta_ncRate} /> },
       ],
     },
     {
       header: 'Revenue',
       accent: '#00E89A',
       sub: [
-        { label: 'Mnt', render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fEur(d.revenue)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_revenue} /> },
+        {
+          label: 'Mnt',
+          key: 'revenue',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fEur(d.revenue)}</td>
+          ),
+        },
+        { label: 'Δ', key: 'delta_revenue', render: (d) => <DeltaCell value={d.delta_revenue} /> },
       ],
     },
     {
       header: 'Transactions',
       accent: '#F5A623',
       sub: [
-        { label: 'Nb',  render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.transactions)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_transactions} /> },
+        {
+          label: 'Nb',
+          key: 'transactions',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fNum(d.transactions)}</td>
+          ),
+        },
+        {
+          label: 'Δ',
+          key: 'delta_transactions',
+          render: (d) => <DeltaCell value={d.delta_transactions} />,
+        },
       ],
     },
     {
       header: 'CVR',
       accent: '#1A2E4A',
       sub: [
-        { label: '%',   render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fPct(d.cvr)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_cvr} /> },
+        {
+          label: '%',
+          key: 'cvr',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fPct(d.cvr)}</td>
+          ),
+        },
+        { label: 'Δ', key: 'delta_cvr', render: (d) => <DeltaCell value={d.delta_cvr} /> },
       ],
     },
     {
       header: 'Panier moyen',
       accent: '#00B87A',
       sub: [
-        { label: 'AOV', render: d => <td className="py-2 px-1.5 text-right text-navy text-xs">{fAov(d.aov)}</td> },
-        { label: 'Δ',   render: d => <DeltaCell value={d.delta_aov} /> },
+        {
+          label: 'AOV',
+          key: 'aov',
+          render: (d) => (
+            <td className="py-2 px-1.5 text-right text-navy text-xs">{fAov(d.aov)}</td>
+          ),
+        },
+        { label: 'Δ', key: 'delta_aov', render: (d) => <DeltaCell value={d.delta_aov} /> },
       ],
     },
   ];
@@ -339,12 +588,16 @@ function ChannelBreakdown({ data, isLoading }) {
         {/* Bar */}
         <div className="flex h-9 w-full rounded-inner overflow-hidden gap-px">
           {chartData
-            .filter(d => d.sessionsPct > 0)
-            .map(d => (
+            .filter((d) => d.sessionsPct > 0)
+            .map((d) => (
               <div
                 key={d.channel}
                 className="relative flex items-center justify-center group transition-opacity hover:opacity-90 cursor-default"
-                style={{ width: `${d.sessionsPct}%`, background: d.color, minWidth: d.sessionsPct >= 4 ? undefined : '2px' }}
+                style={{
+                  width: `${d.sessionsPct}%`,
+                  background: d.color,
+                  minWidth: d.sessionsPct >= 4 ? undefined : '2px',
+                }}
                 title={`${d.channel}: ${fNum(d.sessions)} sessions (${d.sessionsPct}%)`}
               >
                 {/* Label inline si le segment est assez large */}
@@ -354,25 +607,36 @@ function ChannelBreakdown({ data, isLoading }) {
                   </span>
                 )}
                 {/* Tooltip on hover */}
-                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10
+                <div
+                  className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10
                   bg-navy text-white text-[11px] rounded-inner px-2.5 py-1.5 shadow-card whitespace-nowrap
-                  opacity-0 group-hover:opacity-100 transition-opacity">
+                  opacity-0 group-hover:opacity-100 transition-opacity"
+                >
                   <p className="font-semibold">{d.channel}</p>
-                  <p className="text-white/70">{fNum(d.sessions)} sessions · {d.sessionsPct}%</p>
-                  <p className="text-white/70">{fEur(d.revenue)} · {d.revenuePct}% du CA</p>
+                  <p className="text-white/70">
+                    {fNum(d.sessions)} sessions · {d.sessionsPct}%
+                  </p>
+                  <p className="text-white/70">
+                    {fEur(d.revenue)} · {d.revenuePct}% du CA
+                  </p>
                 </div>
               </div>
             ))}
         </div>
         {/* Legend */}
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3">
-          {chartData.filter(d => d.sessionsPct > 0).map(d => (
-            <div key={d.channel} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: d.color }} />
-              <span className="text-[11px] text-navy-muted">{d.channel}</span>
-              <span className="text-[11px] text-navy font-semibold">{d.sessionsPct}%</span>
-            </div>
-          ))}
+          {chartData
+            .filter((d) => d.sessionsPct > 0)
+            .map((d) => (
+              <div key={d.channel} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                  style={{ background: d.color }}
+                />
+                <span className="text-[11px] text-navy-muted">{d.channel}</span>
+                <span className="text-[11px] text-navy font-semibold">{d.sessionsPct}%</span>
+              </div>
+            ))}
         </div>
       </div>
 
@@ -382,35 +646,53 @@ function ChannelBreakdown({ data, isLoading }) {
           <thead>
             {/* Group header row */}
             <tr>
-              <th className="text-left py-1.5 pr-3 text-navy-muted text-[10px] font-medium" rowSpan={2}>Canal</th>
-              {colGroups.map(g => (
-                <th key={g.header}
+              <th
+                className="text-left py-1.5 pr-3 text-navy-muted text-[10px] font-medium"
+                rowSpan={2}
+              >
+                Canal
+              </th>
+              {colGroups.map((g) => (
+                <th
+                  key={g.header}
                   colSpan={g.sub.length}
                   className="text-center py-1.5 px-1 text-[10px] font-semibold border-b-2"
-                  style={{ color: g.accent, borderColor: g.accent }}>
+                  style={{ color: g.accent, borderColor: g.accent }}
+                >
                   {g.header}
                 </th>
               ))}
             </tr>
             {/* Sub-header row */}
             <tr className="border-b border-border">
-              {colGroups.flatMap(g =>
+              {colGroups.flatMap((g) =>
                 g.sub.map((s, i) => (
-                  <th key={`${g.header}-${i}`}
-                    className="text-right py-1.5 px-1.5 text-[10px] font-medium text-navy-muted whitespace-nowrap">
+                  <th
+                    key={`${g.header}-${i}`}
+                    onClick={() => handleSort(s.key)}
+                    className={`text-right py-1.5 px-1.5 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:text-navy transition-colors select-none whitespace-nowrap ${sortCol === s.key ? 'text-navy bg-bg-page/50' : 'text-navy-muted'}`}
+                  >
                     {s.label}
+                    {sortCol === s.key && (
+                      <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    )}
                   </th>
                 ))
               )}
             </tr>
           </thead>
           <tbody>
-            {chartData.map(d => (
-              <tr key={d.channel}
-                className={`border-b border-border/40 ${d.channel === 'Paid Search' ? 'bg-navy/5 font-medium' : 'hover:bg-bg-page/60'}`}>
+            {sorted.map((d) => (
+              <tr
+                key={d.channel}
+                className={`border-b border-border/40 ${d.channel === 'Paid Search' ? 'bg-navy/5 font-medium' : 'hover:bg-bg-page/60'}`}
+              >
                 <td className="py-2 pr-3 whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: d.color }}
+                    />
                     <span className="text-navy text-xs">{d.channel}</span>
                   </div>
                 </td>
@@ -433,24 +715,17 @@ export default function GA4View({ filters }) {
   const [sourceMedium, setSourceMedium] = useState('google / cpc');
 
   const ga4Filters = { ...filters, sourceMedium: sourceMedium || undefined };
-  const ga4Kpis        = useGA4Kpis(ga4Filters);
-  const ga4KpisCpc     = useGA4Kpis({ ...filters, sourceMedium: 'google / cpc' }); // toujours google/cpc pour la réconciliation
-  const ga4Channels    = useGA4Channels(ga4Filters);
-  const adsKpis        = useKpis(filters);
+  const ga4Kpis = useGA4Kpis(ga4Filters);
+  const ga4KpisCpc = useGA4Kpis({ ...filters, sourceMedium: 'google / cpc' }); // toujours google/cpc pour la réconciliation
+  const ga4Channels = useGA4Channels(ga4Filters);
+  const adsKpis = useKpis(filters);
 
   return (
     <div className="space-y-6">
       {/* Filtre source/medium */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-navy-muted font-medium">Source/Support :</span>
-        <div className="flex bg-white border border-border rounded-inner p-0.5">
-          {[{ key: 'google / cpc', label: 'Google CPC' }, { key: '', label: 'Tout le trafic' }].map(opt => (
-            <button key={opt.key} onClick={() => setSourceMedium(opt.key)}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${sourceMedium === opt.key ? 'bg-navy text-white' : 'text-navy-muted hover:text-navy'}`}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <SourceDropdown value={sourceMedium} onChange={setSourceMedium} />
       </div>
 
       {/* Section 1: KPI Scorecards */}
@@ -462,15 +737,19 @@ export default function GA4View({ filters }) {
       />
 
       {/* Section 2: GA4 Cost & Performance — YTD (REMPLACE CVR & AOV YTD) */}
-      {sourceMedium === 'google / cpc' && (
-        <GA4CostKpiChart filters={filters} sourceMedium={sourceMedium} />
-      )}
-
-      {/* Section 4: Tunnel de conversion YTD */}
-      <FunnelChart filters={filters} />
+      <GA4CostKpiChart filters={filters} sourceMedium={sourceMedium} />
 
       {/* Section 5: Bounce Rate YTD */}
-      <BounceRateChart filters={filters} />
+      <BounceRateChart filters={filters} sourceMedium={sourceMedium} />
+
+      {/* Section 7: Channel Breakdown */}
+      <ChannelBreakdown data={ga4Channels.data} isLoading={ga4Channels.isLoading} />
+
+      {/* Section 8: Market Summary */}
+      <GA4MarketTable filters={filters} sourceMedium={sourceMedium} />
+
+      {/* Section 9: Tunnel de conversion YTD (Dernière position) */}
+      <FunnelChart filters={filters} />
 
       {/* Section 6: GA4 vs Google Ads Reconciliation */}
       <ReconciliationTable
@@ -478,9 +757,6 @@ export default function GA4View({ filters }) {
         adsData={adsKpis.data}
         isLoading={ga4KpisCpc.isLoading || adsKpis.isLoading}
       />
-
-      {/* Section 7: Channel Breakdown */}
-      <ChannelBreakdown data={ga4Channels.data} isLoading={ga4Channels.isLoading} />
     </div>
   );
 }

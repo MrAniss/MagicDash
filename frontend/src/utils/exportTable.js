@@ -3,9 +3,9 @@
  */
 
 function rowsToMatrix(columns, rows) {
-  const headers = columns.map(c => c.label ?? c.key);
-  const body = rows.map(row =>
-    columns.map(col => {
+  const headers = columns.map((c) => c.label ?? c.key);
+  const body = rows.map((row) =>
+    columns.map((col) => {
       const val = row[col.key];
       if (val == null) return '';
       // Pourcentages : diviser par 100 pour Excel (2,5% → 0,025)
@@ -20,14 +20,17 @@ function rowsToMatrix(columns, rows) {
 export function downloadCsv(columns, rows, filename = 'export.csv') {
   const matrix = rowsToMatrix(columns, rows);
   const csv = matrix
-    .map(row =>
-      row.map(cell => {
-        // Nombres : décimale en virgule pour Excel FR
-        if (typeof cell === 'number') return String(cell).replace('.', ',');
-        const s = String(cell);
-        // Guillemets si la cellule contient ; " ou retour à la ligne
-        return /[;"'\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(';') // séparateur point-virgule pour Excel FR
+    .map(
+      (row) =>
+        row
+          .map((cell) => {
+            // Nombres : décimale en virgule pour Excel FR
+            if (typeof cell === 'number') return String(cell).replace('.', ',');
+            const s = String(cell);
+            // Guillemets si la cellule contient ; " ou retour à la ligne
+            return /[;"'\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+          })
+          .join(';') // séparateur point-virgule pour Excel FR
     )
     .join('\n');
 
@@ -42,6 +45,6 @@ export function downloadCsv(columns, rows, filename = 'export.csv') {
 
 export async function copyTsv(columns, rows) {
   const matrix = rowsToMatrix(columns, rows);
-  const tsv = matrix.map(row => row.join('\t')).join('\n');
+  const tsv = matrix.map((row) => row.join('\t')).join('\n');
   await navigator.clipboard.writeText(tsv);
 }

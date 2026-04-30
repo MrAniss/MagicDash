@@ -7,22 +7,31 @@
 @layer base {
   body {
     font-family: 'Inter', system-ui, sans-serif;
-    color: #1A2E4A;
-    background: #F4F6F9;
+    color: #1a2e4a;
+    background: #f4f6f9;
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: #c4cdd8 #F4F6F9;
+    scrollbar-color: #c4cdd8 #f4f6f9;
   }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #F4F6F9; }
-  ::-webkit-scrollbar-thumb { background: #c4cdd8; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #8896B0; }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #f4f6f9;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c4cdd8;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #8896b0;
+  }
 }
 
 @layer components {
   .skeleton {
-    @apply animate-pulse rounded-lg;
-    background: #F0F4FF;
+    @apply animate-pulse rounded-lg bg-bg-card2;
   }
 }

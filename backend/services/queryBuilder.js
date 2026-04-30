@@ -1,7 +1,7 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import { getOAuth2Client, getValidAccessToken } from '../auth.js';
 import { BRANDS, MCC_ID } from '../config/accounts.js';
-import { BRAND_KEY_TO_PROPERTY } from '../config/ga4Properties.js';
+import { BRAND_KEY_TO_PROPERTY, resolvePropertyId } from '../config/ga4Properties.js';
 import { GA4_STREAMS } from '../config/ga4Streams.js';
 
 // ─── Google Ads API setup ──────────────────────────────
@@ -197,7 +197,7 @@ async function executeGA4Query(intent) {
 
   const propertyEntries = brand_key === 'ALL'
     ? Object.entries(BRAND_KEY_TO_PROPERTY)
-    : [[brand_key, BRAND_KEY_TO_PROPERTY[brand_key]]].filter(([, v]) => v);
+    : [[brand_key, resolvePropertyId(brand_key, market)]].filter(([, v]) => v);
 
   let allRows = [];
   const queriedProperties = [];

@@ -1,18 +1,47 @@
-import React from 'react';
-
 const MARKET_TO_ISO = {
-  'FR': 'fr', 'BE': 'be', 'NL': 'nl', 'DE': 'de', 'IT': 'it', 'ES': 'es',
-  'UK': 'gb', 'AT': 'at', 'PT': 'pt', 'LU': 'lu', 'SE': 'se', 'NO': 'no',
-  'FI': 'fi', 'PL': 'pl', 'IE': 'ie', 'RO': 'ro', 'SA': 'sa', 'CA': 'ca',
-  'AU': 'au', 'US': 'us',
+  FR: 'fr',
+  BE: 'be',
+  NL: 'nl',
+  DE: 'de',
+  IT: 'it',
+  ES: 'es',
+  UK: 'gb',
+  AT: 'at',
+  PT: 'pt',
+  LU: 'lu',
+  SE: 'se',
+  NO: 'no',
+  FI: 'fi',
+  PL: 'pl',
+  IE: 'ie',
+  RO: 'ro',
+  SA: 'sa',
+  CA: 'ca',
+  AU: 'au',
+  US: 'us',
 };
 
 const MARKET_NAMES = {
-  'FR': 'France', 'BE': 'Belgique', 'NL': 'Pays-Bas', 'DE': 'Allemagne',
-  'IT': 'Italie', 'ES': 'Espagne', 'UK': 'Royaume-Uni', 'AT': 'Autriche',
-  'PT': 'Portugal', 'LU': 'Luxembourg', 'SE': 'Suede', 'NO': 'Norvege',
-  'FI': 'Finlande', 'PL': 'Pologne', 'IE': 'Irlande', 'RO': 'Roumanie',
-  'SA': 'Arabie Saoudite', 'CA': 'Canada', 'AU': 'Australie', 'US': 'Etats-Unis',
+  FR: 'France',
+  BE: 'Belgique',
+  NL: 'Pays-Bas',
+  DE: 'Allemagne',
+  IT: 'Italie',
+  ES: 'Espagne',
+  UK: 'Royaume-Uni',
+  AT: 'Autriche',
+  PT: 'Portugal',
+  LU: 'Luxembourg',
+  SE: 'Suede',
+  NO: 'Norvege',
+  FI: 'Finlande',
+  PL: 'Pologne',
+  IE: 'Irlande',
+  RO: 'Roumanie',
+  SA: 'Arabie Saoudite',
+  CA: 'Canada',
+  AU: 'Australie',
+  US: 'Etats-Unis',
   'Autres pays': 'Autres pays',
 };
 
@@ -23,8 +52,17 @@ const MARKET_NAMES = {
 export function FlagIcon({ market, size = 16 }) {
   if (market === 'Autres pays') {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ display: 'inline-block', verticalAlign: 'middle' }}
+      >
         <circle cx="12" cy="12" r="10" />
         <line x1="2" y1="12" x2="22" y2="12" />
         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />

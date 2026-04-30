@@ -552,7 +552,9 @@ async function queryAccountShopping(api, accountId, loginCustomerId, gaql, refre
 }
 
 export async function getShoppingData(brand, market, from, to) {
-  const cacheKey = `shopping|${brand}|${market}|${from}|${to}`;
+  console.log(`getShoppingData called: brand=${brand}, market=${market}, from=${from}, to=${to}`);
+  const bKey = (brand || '').toUpperCase();
+  const cacheKey = `shopping|${bKey}|${market}|${from}|${to}`;
   const entry = shoppingCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < SHOPPING_CACHE_TTL) return entry.data;
   shoppingCache.delete(cacheKey);
@@ -562,17 +564,17 @@ export async function getShoppingData(brand, market, from, to) {
   const gaql = buildShoppingGAQL(from, to);
 
   const accountList = [];
-  if (brand === 'COCOONCENTER' || brand === 'ALL') {
+  if (bKey === 'COCOONCENTER' || bKey === 'ALL') {
     BRANDS.COCOONCENTER.accounts
       .filter(a => market === 'ALL' || a.market === market)
       .forEach(a => accountList.push({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
   }
-  if (brand === 'PASCAL_COSTE' || brand === 'ALL') {
+  if (bKey === 'PASCAL_COSTE' || bKey === 'ALL') {
     const a = BRANDS.PASCAL_COSTE.accounts[0];
     if (market === 'ALL' || a.market === market)
       accountList.push({ ...a, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping', loginId: a.id });
   }
-  if (brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'ALL') {
+  if (bKey === 'PARAPHARMACIE_LAFAYETTE' || bKey === 'ALL') {
     const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
     if (market === 'ALL' || a.market === market)
       accountList.push({ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id });
@@ -585,6 +587,7 @@ export async function getShoppingData(brand, market, from, to) {
   );
 
   const data = results.flat();
+  console.log(`Google Ads API Shopping: ${data.length} rows fetched (brand=${bKey}, market=${market}, ${from} to ${to})`);
   shoppingCache.set(cacheKey, { data, ts: Date.now() });
   return data;
 }
@@ -597,7 +600,7 @@ const scoringCache = new Map();
 const SCORING_CACHE_TTL = 30 * 60 * 1000;
 
 export async function getScoringData(from, to) {
-  const cacheKey = `scoring|${from}|${to}`;
+  const cacheKey = `scoring_v2|${from}|${to}`;
   const entry = scoringCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < SCORING_CACHE_TTL) return entry.data;
   scoringCache.delete(cacheKey);
@@ -605,35 +608,99 @@ export async function getScoringData(from, to) {
   const refreshToken = getRefreshToken();
   const api = getApi();
   const ccFr = BRANDS.COCOONCENTER.accounts.find(a => a.market === 'FR');
-
-  const gaql = `SELECT
-    segments.product_item_id,
-    segments.product_custom_attribute4,
-    metrics.cost_micros,
-    metrics.conversions_value,
-    metrics.impressions,
-    metrics.clicks,
-    metrics.conversions
-  FROM shopping_performance_view
-  WHERE segments.date BETWEEN '${from}' AND '${to}'`;
-
   const customer = getCustomer(api, ccFr.id, MCC_ID, refreshToken);
-  const results = await customer.query(gaql).catch(e => {
-    const msg = e?.message || e?.details?.[0]?.message || JSON.stringify(e);
-    console.error('Scoring query error:', msg);
-    return [];
+
+  // Helper to map campaign name to scoring bucket
+  const getBucket = (name) => {
+    const n = name.toLowerCase();
+    if (n.includes('top') || n.includes('middle')) return 'TOP_MIDDLE';
+    if (n.includes('flop')) return 'FLOP';
+    if (n.includes('zombie')) return 'ZOMBIE';
+    return null; // Ignore others
+  };
+
+  // 1. Query for base metrics by campaign
+  const baseGAQL = `SELECT
+      campaign.id,
+      campaign.name,
+      metrics.cost_micros,
+      metrics.conversions_value,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.conversions
+    FROM campaign
+    WHERE segments.date BETWEEN '${from}' AND '${to}'
+    AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'`;
+
+  // 2. Query for real margin by campaign
+  const marginGAQL = `SELECT
+      campaign.id,
+      segments.conversion_action,
+      metrics.all_conversions_value
+    FROM campaign
+    WHERE segments.date BETWEEN '${from}' AND '${to}'
+    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/7039093913'
+    AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'`;
+
+  const [baseResults, marginResults] = await Promise.all([
+    customer.query(baseGAQL).catch(e => { console.error('Base scoring query error:', e?.message || e); return []; }),
+    customer.query(marginGAQL).catch(e => { console.error('Margin scoring query error:', e?.message || e); return []; })
+  ]);
+
+  const byCampaignId = {};
+
+  // Process base metrics
+  for (const r of baseResults) {
+    const bucket = getBucket(r.campaign.name);
+    if (!bucket) continue; // Skip campaigns that don't match our 3 segments
+
+    const cid = String(r.campaign.id);
+    if (!byCampaignId[cid]) {
+      byCampaignId[cid] = {
+        scoring: bucket,
+        cost: 0, revenue: 0, margin: 0, impressions: 0, clicks: 0, conversions: 0
+      };
+    }
+    
+    const c = byCampaignId[cid];
+    c.cost += Number(r.metrics.cost_micros || 0) / 1e6;
+    c.revenue += Number(r.metrics.conversions_value || 0);
+    c.impressions += Number(r.metrics.impressions || 0);
+    c.clicks += Number(r.metrics.clicks || 0);
+    c.conversions += Number(r.metrics.conversions || 0);
+  }
+// Map margin data onto campaigns
+for (const r of marginResults) {
+  const cid = String(r.campaign.id);
+  if (byCampaignId[cid]) {
+    byCampaignId[cid].margin += Number(r.metrics.all_conversions_value || 0);
+  }
+}
+
+  // Final aggregation by scoring bucket
+  const SCORING_META = {
+    'TOP_MIDDLE': { label: 'Top/Middle', color: '#00B87A', order: 1 },
+    'FLOP':       { label: 'Flop',       color: '#E8524A', order: 2 },
+    'ZOMBIE':     { label: 'Zombie',     color: '#8896B0', order: 3 },
+  };
+
+  const buckets = {};
+  Object.values(byCampaignId).forEach(c => {
+    if (!buckets[c.scoring]) {
+      const meta = SCORING_META[c.scoring];
+      buckets[c.scoring] = { scoring: c.scoring, label: meta.label, color: meta.color, order: meta.order, cost: 0, revenue: 0, margin: 0, impressions: 0, clicks: 0, conversions: 0, count: 0 };
+    }
+    const b = buckets[c.scoring];
+    b.cost += c.cost;
+    b.revenue += c.revenue;
+    b.margin += c.margin;
+    b.impressions += c.impressions;
+    b.clicks += c.clicks;
+    b.conversions += c.conversions;
+    b.count += 1; 
   });
 
-  const data = results.map(r => ({
-    item_id:  String(r.segments?.product_item_id || ''),
-    scoring:  String(r.segments?.product_custom_attribute4 || '').toUpperCase(),
-    cost:     Number(r.metrics?.cost_micros || 0) / 1e6,
-    revenue:  Number(r.metrics?.conversions_value || 0),
-    impressions: Number(r.metrics?.impressions || 0),
-    clicks:   Number(r.metrics?.clicks || 0),
-    conversions: Number(r.metrics?.conversions || 0),
-  }));
-
+  const data = Object.values(buckets).sort((a, b) => a.order - b.order);
   scoringCache.set(cacheKey, { data, ts: Date.now() });
   return data;
 }

@@ -33,7 +33,8 @@ export const BRAND_ALIASES = {
 };
 
 export function resolveBrandLabel(brand) {
-  return BRAND_ALIASES[brand] || brand;
+  const b = (brand || '').toUpperCase();
+  return BRAND_ALIASES[b] || brand;
 }
 
 export function resolveAdsBrandKey(brandLabel) {

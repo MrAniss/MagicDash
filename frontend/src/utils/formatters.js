@@ -1,8 +1,27 @@
-const eurFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const eurIntFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 });
-const eurDetailFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const eurFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const eurIntFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const eurDetailFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 const numFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
-const pctFormatter = new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const pctFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
 
 export function fEur(value, detailed = false) {
   if (value == null || isNaN(value)) return '—';
@@ -38,7 +57,7 @@ export function fAov(value) {
 export function fCompact(value) {
   if (value == null || isNaN(value)) return '—';
   if (value >= 1_000_000) return Math.round(value / 1_000_000).toFixed(0) + 'M';
-  if (value >= 1_000)     return Math.round(value / 1_000).toFixed(0) + 'K';
+  if (value >= 1_000) return Math.round(value / 1_000).toFixed(0) + 'K';
   return numFormatter.format(value);
 }
 
@@ -46,7 +65,7 @@ export function fCompact(value) {
 export function fEurCompact(value) {
   if (value == null || isNaN(value)) return '—';
   if (value >= 1_000_000) return Math.round(value / 1_000_000).toFixed(0) + 'M€';
-  if (value >= 1_000)     return Math.round(value / 1_000).toFixed(0) + 'K€';
+  if (value >= 1_000) return Math.round(value / 1_000).toFixed(0) + 'K€';
   return eurIntFormatter.format(value);
 }
 

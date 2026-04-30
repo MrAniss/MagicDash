@@ -1,32 +1,12 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../auth.js';
 import { getShoppingData, getScoringData } from '../googleAdsClient.js';
-import { getPriceMap, getPriceCompetitivenessData, getProductStatuses, getSalePriceMap } from '../services/merchantCenterClient.js';
+import { getPriceMap, getPriceCompetitivenessData, getProductStatuses } from '../services/merchantCenterClient.js';
 import { POAS_BREAKEVEN } from '../config/poasThresholds.js';
 
+import { getComparisonDates, r2 } from '../dateUtils.js';
+
 const router = Router();
-
-function r2(v) { return Math.round(v * 100) / 100; }
-
-function subDays(dateStr, n) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
-function getCompDates(from, to, compareTo) {
-  const f = new Date(from);
-  const t = new Date(to);
-  const days = Math.round((t - f) / 86400000) + 1;
-  if (compareTo === 'previous_year') {
-    const pf = new Date(f); pf.setFullYear(pf.getFullYear() - 1);
-    const pt = new Date(t); pt.setFullYear(pt.getFullYear() - 1);
-    return { compFrom: pf.toISOString().slice(0, 10), compTo: pt.toISOString().slice(0, 10) };
-  }
-  const compTo = subDays(from, 1);
-  const compFrom = subDays(compTo, days - 1);
-  return { compFrom, compTo };
-}
 
 // ─── Aggregation helpers ──────────────────────────────────
 
@@ -101,22 +81,20 @@ function aggregateBrands(products, pcMap = {}) {
   }
   return Object.values(byBrand).map(b => {
     const { _delta_sum, _delta_count, ...rest } = b;
+    const cost = r2(b.cost);
+    const revenue = r2(b.revenue);
     return {
       ...rest,
-      cost:          r2(b.cost),
-      revenue:       r2(b.revenue),
-      roas:          b.cost > 0 ? r2(b.revenue / b.cost) : 0,
+      cost,
+      revenue,
+      roas:          cost > 0 ? r2(revenue / cost) : 0,
       cvr:           b.clicks > 0 ? r2((b.conversions / b.clicks) * 100) : 0,
       ctr:           b.impressions > 0 ? r2((b.clicks / b.impressions) * 100) : 0,
-      aov:           b.conversions > 0 ? r2(b.revenue / b.conversions) : null,
+      cpc:           b.clicks > 0 ? r2(cost / b.clicks) : 0,
+      aov:           b.conversions > 0 ? r2(revenue / b.conversions) : null,
       avg_delta_pct: _delta_count > 0 ? r2(_delta_sum / _delta_count) : null,
     };
   });
-}
-
-function getSortKey(sort) {
-  const allowed = ['revenue', 'roas', 'impressions', 'clicks', 'cost', 'cvr', 'ctr', 'conversions', 'avg_price', 'price', 'delta_pct', 'benchmark_price'];
-  return allowed.includes(sort) ? sort : 'revenue';
 }
 
 // Enrich products with price map + competitiveness data
@@ -135,103 +113,6 @@ function enrichProducts(products, priceMap, pcMap) {
     };
   });
 }
-
-// ─── GET /api/shopping/products ──────────────────────────
-router.get('/products', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const {
-      brand = 'ALL', market = 'ALL', from, to,
-      limit = '100', offset = '0',
-      sort = 'revenue', order = 'desc',
-      segment = 'ALL', product_brand = 'ALL', search = '',
-      price_status = 'ALL',
-    } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    const [rows, priceMap, pcMap] = await Promise.all([
-      getShoppingData(brand, market, from, to),
-      getPriceMap(brand, market),
-      getPriceCompetitivenessData(brand, market),
-    ]);
-    const products = enrichProducts(aggregateProducts(rows), priceMap, pcMap);
-
-    // — Totals (before filtering) —
-    const totalRevenue = r2(products.reduce((s, p) => s + p.revenue, 0));
-    const totalCost    = r2(products.reduce((s, p) => s + p.cost, 0));
-    const totalConv    = products.reduce((s, p) => s + p.conversions, 0);
-    const totalClicks  = products.reduce((s, p) => s + p.clicks, 0);
-    const activeCount  = products.filter(p => p.impressions > 0).length;
-    const avgRoas      = totalCost > 0 ? r2(totalRevenue / totalCost) : 0;
-    const avgCvr       = totalClicks > 0 ? r2((totalConv / totalClicks) * 100) : 0;
-
-    // — Segment counts & revenue share —
-    const segCounts = {}, segRevenue = {};
-    for (const p of products) {
-      segCounts[p.segment]  = (segCounts[p.segment]  || 0) + 1;
-      segRevenue[p.segment] = (segRevenue[p.segment] || 0) + p.revenue;
-    }
-
-    // — Filter —
-    let filtered = products;
-    if (segment !== 'ALL')       filtered = filtered.filter(p => p.segment === segment);
-    if (product_brand !== 'ALL') filtered = filtered.filter(p => p.product_brand === product_brand);
-    if (price_status !== 'ALL')  filtered = filtered.filter(p => p.price_status === price_status);
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(p =>
-        (p.title || '').toLowerCase().includes(q) || p.item_id.toLowerCase().includes(q)
-      );
-    }
-
-    // — Sort —
-    const sortKey = getSortKey(sort);
-    const dir = order === 'asc' ? 1 : -1;
-    filtered.sort((a, b) => dir * ((a[sortKey] ?? -Infinity) - (b[sortKey] ?? -Infinity)));
-
-    // — Paginate —
-    const lim = Math.min(Number(limit), 500);
-    const off = Number(offset) || 0;
-
-    res.json({
-      summary: {
-        total: products.length, active: activeCount,
-        revenue: totalRevenue, cost: totalCost,
-        conversions: totalConv, avg_roas: avgRoas, avg_cvr: avgCvr,
-      },
-      segments: segCounts,
-      segment_revenue: segRevenue,
-      total_filtered: filtered.length,
-      products: filtered.slice(off, off + lim),
-    });
-  } catch (err) {
-    console.error('Shopping/products:', err.message);
-    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/shopping/brands ─────────────────────────────
-router.get('/brands', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL', from, to } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    const [rows, pcMap] = await Promise.all([
-      getShoppingData(brand, market, from, to),
-      getPriceCompetitivenessData(brand, market),
-    ]);
-    const products = aggregateProducts(rows);
-    const brands = aggregateBrands(products, pcMap);
-    brands.sort((a, b) => b.revenue - a.revenue);
-    res.json(brands);
-  } catch (err) {
-    console.error('Shopping/brands:', err.message);
-    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ─── GET /api/shopping/price-summary ─────────────────────
 router.get('/price-summary', async (req, res) => {
@@ -285,184 +166,14 @@ router.get('/price-summary', async (req, res) => {
   }
 });
 
-// ─── GET /api/shopping/comparison ────────────────────────
-router.get('/comparison', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period' } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    const { compFrom, compTo } = getCompDates(from, to, compareTo);
-    const [currRows, prevRows] = await Promise.all([
-      getShoppingData(brand, market, from, to),
-      getShoppingData(brand, market, compFrom, compTo),
-    ]);
-
-    const curr = aggregateProducts(currRows);
-    const prev = aggregateProducts(prevRows);
-
-    const prevMap = {};
-    for (const p of prev) prevMap[`${p.brand}||${p.market}||${p.item_id}`] = p;
-
-    const result = curr.map(p => {
-      const key = `${p.brand}||${p.market}||${p.item_id}`;
-      const q = prevMap[key] || null;
-      return {
-        item_id: p.item_id, title: p.title, product_brand: p.product_brand,
-        market: p.market, brand: p.brand, brandLabel: p.brandLabel,
-        current:  { revenue: p.revenue, roas: p.roas, cvr: p.cvr, cost: p.cost, clicks: p.clicks, conversions: p.conversions },
-        previous: q ? { revenue: q.revenue, roas: q.roas, cvr: q.cvr, cost: q.cost, clicks: q.clicks, conversions: q.conversions } : null,
-        delta_revenue: q && q.revenue > 0 ? r2(((p.revenue - q.revenue) / q.revenue) * 100) : null,
-        delta_roas:    q ? r2(p.roas - q.roas) : null,
-        delta_cvr:     q ? r2(p.cvr  - q.cvr)  : null,
-        trend: q ? (p.revenue >= q.revenue ? 'UP' : 'DOWN') : 'NEW',
-      };
-    });
-
-    // Add products that disappeared
-    const currKeys = new Set(curr.map(p => `${p.brand}||${p.market}||${p.item_id}`));
-    for (const p of prev) {
-      if (!currKeys.has(`${p.brand}||${p.market}||${p.item_id}`)) {
-        result.push({
-          item_id: p.item_id, title: p.title, product_brand: p.product_brand,
-          market: p.market, brand: p.brand, brandLabel: p.brandLabel,
-          current: null,
-          previous: { revenue: p.revenue, roas: p.roas, cvr: p.cvr, cost: p.cost, clicks: p.clicks, conversions: p.conversions },
-          delta_revenue: null, delta_roas: null, delta_cvr: null,
-          trend: 'GONE',
-        });
-      }
-    }
-
-    result.sort((a, b) => (b.current?.revenue || 0) - (a.current?.revenue || 0));
-    res.json(result.slice(0, 500));
-  } catch (err) {
-    console.error('Shopping/comparison:', err.message);
-    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/shopping/grouped ────────────────────────────
-// groupBy = 'brand' | 'category'
-router.get('/grouped', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL', from, to, groupBy = 'brand' } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    const [rows, pcMap] = await Promise.all([
-      getShoppingData(brand, market, from, to),
-      getPriceCompetitivenessData(brand, market),
-    ]);
-    const products = aggregateProducts(rows);
-
-    const keyFn = groupBy === 'category'
-      ? p => p.category_l1 || '(Sans catégorie)'
-      : p => p.product_brand || '(Sans marque)';
-
-    const map = new Map();
-    for (const p of products) {
-      const key = keyFn(p);
-      if (!map.has(key)) {
-        map.set(key, {
-          name: key,
-          impressions: 0, clicks: 0, cost: 0, conversions: 0, revenue: 0, product_count: 0,
-          pc: { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 },
-        });
-      }
-      const g = map.get(key);
-      g.impressions    += p.impressions;
-      g.clicks         += p.clicks;
-      g.cost           += p.cost;
-      g.conversions    += p.conversions;
-      g.revenue        += p.revenue;
-      g.product_count++;
-      const status = pcMap[p.item_id]?.status ?? 'NO_DATA';
-      g.pc[status] = (g.pc[status] || 0) + 1;
-    }
-
-    const result = Array.from(map.values()).map(g => {
-      const pcTotal = g.pc.COMPETITIVE + g.pc.ON_PAR + g.pc.EXPENSIVE;
-      return {
-        name:          g.name,
-        product_count: g.product_count,
-        impressions:   g.impressions,
-        clicks:        g.clicks,
-        cost:          r2(g.cost),
-        conversions:   g.conversions,
-        revenue:       r2(g.revenue),
-        roas:          g.cost > 0 ? r2(g.revenue / g.cost) : 0,
-        cvr:           g.clicks > 0 ? r2((g.conversions / g.clicks) * 100) : 0,
-        ctr:           g.impressions > 0 ? r2((g.clicks / g.impressions) * 100) : 0,
-        aov:           g.conversions > 0 ? r2(g.revenue / g.conversions) : null,
-        price_breakdown: {
-          competitive:     g.pc.COMPETITIVE,
-          on_par:          g.pc.ON_PAR,
-          expensive:       g.pc.EXPENSIVE,
-          no_data:         g.pc.NO_DATA,
-          total_with_data: pcTotal,
-          competitive_pct: pcTotal > 0 ? r2((g.pc.COMPETITIVE / pcTotal) * 100) : 0,
-          on_par_pct:      pcTotal > 0 ? r2((g.pc.ON_PAR      / pcTotal) * 100) : 0,
-          expensive_pct:   pcTotal > 0 ? r2((g.pc.EXPENSIVE   / pcTotal) * 100) : 0,
-        },
-      };
-    });
-
-    result.sort((a, b) => b.impressions - a.impressions);
-    res.json(result);
-  } catch (err) {
-    console.error('Shopping/grouped:', err.message);
-    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/shopping/zombies ────────────────────────────
-// Products active in past 90d but with 0 impressions in requested period
-router.get('/zombies', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL', from, to } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    const ref90From = subDays(from, 90);
-    const [recentRows, refRows] = await Promise.all([
-      getShoppingData(brand, market, from, to),
-      getShoppingData(brand, market, ref90From, to),
-    ]);
-
-    const recentProducts = aggregateProducts(recentRows);
-    const refProducts    = aggregateProducts(refRows);
-
-    const activeKeys = new Set(
-      recentProducts.filter(p => p.impressions > 0).map(p => `${p.brand}||${p.market}||${p.item_id}`)
-    );
-
-    const zombies = refProducts
-      .filter(p => !activeKeys.has(`${p.brand}||${p.market}||${p.item_id}`))
-      .map(p => ({
-        item_id: p.item_id, title: p.title,
-        brand: p.product_brand, market: p.market, brandLabel: p.brandLabel,
-      }));
-
-    res.json(zombies.slice(0, 500));
-  } catch (err) {
-    console.error('Shopping/zombies:', err.message);
-    if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ─── GET /api/shopping/scoring ────────────────────────────
 // CC FR only — hardcoded to customer 432-928-8276
 
 const SCORING_BUCKETS = {
-  'TOP':    { label: 'Top',       color: '#00B87A', order: 1 },
-  'MIDDLE': { label: 'Middle',    color: '#F5A623', order: 2 },
-  'FLOP':   { label: 'Flop',      color: '#E8524A', order: 3 },
-  'ZOMBIE': { label: 'Zombie',    color: '#8896B0', order: 4 },
-  '':       { label: 'Non scoré', color: '#D1D5DB', order: 5 },
+  'TOP_MIDDLE': { label: 'Top/Middle', color: '#00B87A', order: 1 },
+  'FLOP':       { label: 'Flop',       color: '#E8524A', order: 3 },
+  'ZOMBIE':     { label: 'Zombie',     color: '#8896B0', order: 4 },
+  '':           { label: 'Non scoré',  color: '#D1D5DB', order: 5 },
 };
 
 router.get('/scoring', async (req, res) => {
@@ -476,13 +187,14 @@ router.get('/scoring', async (req, res) => {
     // Aggregate by scoring bucket
     const agg = {};
     for (const [key] of Object.entries(SCORING_BUCKETS)) {
-      agg[key] = { cost: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0, items: new Set() };
+      agg[key] = { cost: 0, revenue: 0, margin: 0, impressions: 0, clicks: 0, conversions: 0, items: new Set() };
     }
 
     for (const row of rows) {
       const key = row.scoring in SCORING_BUCKETS ? row.scoring : '';
       agg[key].cost        += row.cost;
       agg[key].revenue     += row.revenue;
+      agg[key].margin      += (row.margin || 0);
       agg[key].impressions += row.impressions;
       agg[key].clicks      += row.clicks;
       agg[key].conversions += row.conversions;
@@ -491,11 +203,12 @@ router.get('/scoring', async (req, res) => {
 
     const totalSpend   = Object.values(agg).reduce((s, v) => s + v.cost, 0);
     const totalRevenue = Object.values(agg).reduce((s, v) => s + v.revenue, 0);
-    const breakeven    = POAS_BREAKEVEN['Cocooncenter']['FR'];
+    const breakeven    = POAS_BREAKEVEN['COCOONCENTER']['FR'];
 
     const result = Object.entries(SCORING_BUCKETS)
       .map(([key, meta]) => {
         const d = agg[key];
+        const poas = d.cost > 0 ? r2(d.margin / d.cost) : 0;
         const roas = d.cost > 0 ? r2(d.revenue / d.cost) : 0;
         const cvr  = d.clicks > 0 ? r2((d.conversions / d.clicks) * 100) : 0;
         return {
@@ -505,9 +218,11 @@ router.get('/scoring', async (req, res) => {
           product_count: d.items.size,
           spend:         r2(d.cost),
           revenue:       r2(d.revenue),
+          margin:        r2(d.margin),
           conversions:   r2(d.conversions),
           impressions:   d.impressions,
           clicks:        d.clicks,
+          poas,
           roas,
           cvr,
           spend_pct:   totalSpend   > 0 ? r2((d.cost    / totalSpend)   * 100) : 0,
@@ -527,26 +242,6 @@ router.get('/scoring', async (req, res) => {
   } catch (err) {
     console.error('Shopping/scoring:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/shopping/product-status-summary ────────────
-// Scorecards statut produits (actifs / refusés / limités / en attente / total)
-router.get('/product-status-summary', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL' } = req.query;
-    const items = await getProductStatuses(brand, market);
-    const counts = { active: 0, disapproved: 0, limited: 0, pending: 0 };
-    for (const it of items) {
-      if (counts[it.status] != null) counts[it.status]++;
-      else counts.pending++;
-    }
-    const total = items.length;
-    res.json({ ...counts, total });
-  } catch (err) {
-    console.error('Shopping/product-status-summary:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -612,7 +307,7 @@ router.get('/top-flop', async (req, res) => {
     } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const { compFrom, compTo } = getCompDates(from, to, compareTo);
+    const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
     const [currRows, prevRows] = await Promise.all([
       getShoppingData(brand, market, from, to),
       getShoppingData(brand, market, compFrom, compTo),
@@ -736,54 +431,6 @@ router.get('/feed-quality', async (req, res) => {
     });
   } catch (err) {
     console.error('Shopping/feed-quality:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/shopping/promos ────────────────────────────
-// Produits avec sale_price actif (badge promo dans le flux)
-router.get('/promos', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL', market = 'ALL' } = req.query;
-
-    const [promoMap, pcMap] = await Promise.all([
-      getSalePriceMap(brand, market),
-      getPriceCompetitivenessData(brand, market),
-    ]);
-
-    const results = [];
-    for (const [offerId, p] of Object.entries(promoMap)) {
-      if (!p.original_price || !p.sale_price || p.sale_price >= p.original_price) continue;
-      const discount_pct = r2(((p.sale_price - p.original_price) / p.original_price) * 100);
-      const pc = pcMap[offerId] || null;
-      const delta_vs_market = pc?.benchmark_price
-        ? r2(((p.sale_price - pc.benchmark_price) / pc.benchmark_price) * 100)
-        : null;
-      const market_status = delta_vs_market == null
-        ? 'NO_DATA'
-        : delta_vs_market < -5 ? 'COMPETITIVE' : delta_vs_market > 5 ? 'EXPENSIVE' : 'ON_PAR';
-
-      results.push({
-        item_id:         offerId,
-        title:           p.title,
-        brand:           p.brand,
-        original_price:  p.original_price,
-        sale_price:      p.sale_price,
-        discount_pct,
-        benchmark_price: pc?.benchmark_price ?? null,
-        delta_vs_market,
-        market_status,
-        promo_start:     p.promo_start,
-        promo_end:       p.promo_end,
-        currency:        p.currency,
-      });
-    }
-
-    results.sort((a, b) => a.discount_pct - b.discount_pct); // most negative (biggest discount) first
-    res.json(results);
-  } catch (err) {
-    console.error('Shopping/promos:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

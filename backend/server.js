@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,13 +18,12 @@ import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
 import { clearGA4Cache, getGA4Rows } from './ga4Client.js';
 import { clearMcCache } from './services/merchantCenterClient.js';
 import ga4Router from './routes/ga4.js';
-import competitionRouter from './routes/competition.js';
 import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
-import assistantRouter from './routes/assistant.js';
-import assetsRouter from './routes/assets.js';
-import brandRouter from './routes/brand.js';
+import reportsRouter from './routes/reports.js';
 import { clearGscCache } from './searchConsoleClient.js';
+
+import { getComparisonDates, fmtDate, daysBetween, r2, pctChange, getISOWeek } from './dateUtils.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -45,12 +45,9 @@ app.use(express.json());
 
 authRouter(app);
 app.use('/api/ga4', ga4Router);
-app.use('/api/competition', competitionRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
-app.use('/api/assistant', assistantRouter);
-app.use('/api/assets', assetsRouter);
-app.use('/api/brand', brandRouter);
+app.use('/api/reports', reportsRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
@@ -64,6 +61,8 @@ app.post('/api/cache/clear', (_req, res) => {
   clearGA4Cache();
   clearMcCache();
   clearGscCache();
+  ytdCache.clear();
+  ga4YtdCache.clear();
   res.json({ ok: true });
 });
 
@@ -325,31 +324,25 @@ app.get('/api/budget', async (req, res) => {
     const comarket = includeComarket === 'true';
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
-    const isPascalCoste = brand === 'Pascal Coste Shopping' || brand === 'PASCAL_COSTE';
-
     // Map brand param
-    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
-                     : brand === 'COCOONCENTER' ? 'Cocooncenter'
-                     : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
-                     : brand;
+    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
+                     : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
+                     : 'Cocooncenter';
+    
     const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
                       : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
-                      : brandLabel === 'Pascal Coste Shopping' ? 'PASCAL_COSTE'
-                      : brand;
+                      : 'PASCAL_COSTE';
+
+    const isPascalCoste = adsBrandKey === 'PASCAL_COSTE';
 
     // Get budgets from Sheet
     let brandBudgets = {};
-    let paraLafBudget = 0;
     if (isPascalCoste) {
       const pcsBudgets = await getPCSBudgetForMonth(month);
       brandBudgets = pcsBudgets[brandLabel] || {};
     } else {
       const budgets = await getBudgetForMonth(month);
       brandBudgets = budgets[brandLabel] || {};
-      // When viewing Cocooncenter, also grab Para Laf budget for the consolidated row
-      if (brandLabel === 'Cocooncenter') {
-        paraLafBudget = budgets['Parapharmacie Lafayette']?.['FR'] || 0;
-      }
     }
 
     // Date range for current month spend
@@ -375,21 +368,12 @@ app.get('/api/budget', async (req, res) => {
     }
 
     // Fetch current + comparison rows in parallel
-    // When Cocooncenter + ALL markets, also fetch Para Laf for full consolidation
     const marketFilter = market !== 'ALL' && market !== 'Autres pays' ? market : undefined;
-    const isCC = brandLabel === 'Cocooncenter';
-    const includeParaLaf = isCC && market === 'ALL';
 
-    const [currentRows, compRows, paraLafCurrentRows, paraLafCompRows] = await Promise.all([
+    const [currentRows, compRows] = await Promise.all([
       getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
       getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo, includeComarket: comarket }),
-      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: comarket }) : Promise.resolve([]),
-      includeParaLaf ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: compFrom, to: compTo, includeComarket: comarket }) : Promise.resolve([]),
     ]);
-
-    // Merge Para Laf rows into CC rows for consolidated view
-    const allCurrentRows = includeParaLaf ? [...currentRows, ...paraLafCurrentRows] : currentRows;
-    const allCompRows    = includeParaLaf ? [...compRows,    ...paraLafCompRows]    : compRows;
 
     // Aggregate helper for a market filter on rows
     function aggregateForMarket(rows, mkt) {
@@ -404,8 +388,8 @@ app.get('/api/budget', async (req, res) => {
       return aggregateMetrics(filtered);
     }
 
-    const cur  = aggregateForMarket(allCurrentRows, market);
-    const comp = aggregateForMarket(allCompRows,    market);
+    const cur  = aggregateForMarket(currentRows, market);
+    const comp = aggregateForMarket(compRows,    market);
 
     // Projections
     function buildMetricForecast(toDate, daysEl, daysT, compValue) {
@@ -430,11 +414,10 @@ app.get('/api/budget', async (req, res) => {
     const aovCompare = comp.conversions > 0 ? r2(comp.revenue / comp.conversions) : 0;
     const aovDelta = aovCompare > 0 ? r2(((aovProjBase - aovCompare) / aovCompare) * 100) : 0;
 
-    // Budget pacing (cost) — include Para Laf budget when CC ALL view
-    const ccBudget = market === 'Autres pays' ? (brandBudgets['Autres pays'] || 0)
+    // Budget pacing (cost)
+    const budgetValue = market === 'Autres pays' ? (brandBudgets['Autres pays'] || 0)
                    : market !== 'ALL' ? (brandBudgets[market] || 0)
                    : Object.values(brandBudgets).reduce((s, v) => s + v, 0);
-    const budgetValue = (includeParaLaf && market === 'ALL') ? ccBudget + paraLafBudget : ccBudget;
 
     const theoreticalSpend = budgetValue > 0 ? (budgetValue / daysTotal) * daysElapsed : 0;
     const pacingPct = theoreticalSpend > 0 ? r2((cur.spend / theoreticalSpend) * 100) : 0;
@@ -491,44 +474,6 @@ app.get('/api/budget', async (req, res) => {
         });
       }
       marketsTable.sort((a, b) => b.spend_to_date - a.spend_to_date);
-
-      // Inject "France Para Laf" row just after "FR" when viewing Cocooncenter ALL
-      if (isCC && paraLafCurrentRows.length > 0) {
-        const paraSpend = r2(paraLafCurrentRows.reduce((s, r) => s + r.cost, 0));
-        const paraRemaining = paraLafBudget - paraSpend;
-        const paraRemDays = daysTotal - daysElapsed;
-        const paraDailyActual = daysElapsed > 0 ? r2(paraSpend / daysElapsed) : 0;
-        const paraDailyTarget = paraRemaining > 0 && paraRemDays > 0 ? r2(paraRemaining / paraRemDays) : 0;
-        const paraDailyAvg = daysElapsed > 0 ? paraSpend / daysElapsed : 0;
-        const paraProjBase = r2(paraDailyAvg * daysTotal);
-        const paraTheoretical = paraLafBudget > 0 ? (paraLafBudget / daysTotal) * daysElapsed : 0;
-        const paraPacing = paraTheoretical > 0 ? r2((paraSpend / paraTheoretical) * 100) : 0;
-        let paraStatus = 'on_track';
-        if (paraPacing > 105) paraStatus = 'over';
-        else if (paraPacing < 85) paraStatus = 'under';
-
-        const paraRow = {
-          market: 'France Para Laf',
-          budget: paraLafBudget, spend_to_date: paraSpend,
-          pacing_pct: paraPacing,
-          projection_base: paraProjBase,
-          projection_optimistic: r2(paraProjBase * 1.15),
-          projection_pessimistic: r2(paraProjBase * 0.85),
-          status: paraStatus,
-          daily_actual: paraDailyActual,
-          daily_target: paraDailyTarget,
-          daily_delta: r2(paraDailyActual - paraDailyTarget),
-          isGuest: true, // flag: this row belongs to a different brand
-        };
-
-        // Insert after FR row
-        const frIdx = marketsTable.findIndex(m => m.market === 'FR');
-        if (frIdx >= 0) {
-          marketsTable.splice(frIdx + 1, 0, paraRow);
-        } else {
-          marketsTable.unshift(paraRow);
-        }
-      }
     }
 
     res.json({
@@ -577,18 +522,15 @@ app.get('/api/budget', async (req, res) => {
   }
 });
 
-function r2(v) { return Math.round(v * 100) / 100; }
-
 // ─── Budget Recommendations ────────────────────────────
 app.get('/api/budget/recommendations', async (req, res) => {
   try {
     const { brand = 'Cocooncenter', month, granularity = 'market' } = req.query;
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
-    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
-                     : brand === 'COCOONCENTER' ? 'Cocooncenter'
-                     : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
-                     : brand;
+    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
+                     : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
+                     : 'Cocooncenter';
     const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
                       : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
                       : 'PASCAL_COSTE';
@@ -609,12 +551,10 @@ app.get('/api/budget/recommendations', async (req, res) => {
     const daysElapsed = Math.floor((endDate - firstDay) / (1000 * 60 * 60 * 24)) + 1;
     const daysTotal = lastDay.getDate();
 
-    const isCC = adsBrandKey === 'COCOONCENTER';
     const fromStr = firstDay.toISOString().slice(0, 10);
 
-    const [rows, paraLafRows] = await Promise.all([
+    const [rows] = await Promise.all([
       getRows({ brand: adsBrandKey, from: fromStr, to: from }),
-      isCC ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from: fromStr, to: from }) : Promise.resolve([]),
     ]);
 
     const spendByMarket = {};
@@ -641,30 +581,6 @@ app.get('/api/budget/recommendations', async (req, res) => {
         projection_base: projBase,
         daily_actual: daysElapsed > 0 ? r2(mktSpend / daysElapsed) : 0,
         daily_target: remaining > 0 && remDays > 0 ? r2(remaining / remDays) : 0,
-      });
-    }
-
-    // When Cocooncenter, also add Para Laf as a "guest" market for recommendations
-    if (isCC && paraLafRows.length > 0) {
-      const allBudgets = await getBudgetForMonth(month);
-      const paraLafBudgetRec = allBudgets['Parapharmacie Lafayette']?.['FR'] || 0;
-      const paraSpend = r2(paraLafRows.reduce((s, r) => s + r.cost, 0));
-      const paraDailyAvg = daysElapsed > 0 ? paraSpend / daysElapsed : 0;
-      const paraProjBase = r2(paraDailyAvg * daysTotal);
-      const paraTheoretical = paraLafBudgetRec > 0 ? (paraLafBudgetRec / daysTotal) * daysElapsed : 0;
-      const paraPacingPct = paraTheoretical > 0 ? r2((paraSpend / paraTheoretical) * 100) : 100;
-      const paraRemaining = paraLafBudgetRec - paraSpend;
-      const paraRemDays = daysTotal - daysElapsed;
-      pacingMarkets.push({
-        market: 'France Para Laf',
-        adsMarket: 'FR',
-        adsBrand: 'PARAPHARMACIE_LAFAYETTE',
-        budget: paraLafBudgetRec,
-        spend_to_date: paraSpend,
-        pacing_pct: paraPacingPct,
-        projection_base: paraProjBase,
-        daily_actual: daysElapsed > 0 ? r2(paraSpend / daysElapsed) : 0,
-        daily_target: paraRemaining > 0 && paraRemDays > 0 ? r2(paraRemaining / paraRemDays) : 0,
       });
     }
 
@@ -857,42 +773,6 @@ function buildTrendSeries(rows, granularity) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function getComparisonDates(from, to, compareTo) {
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  const diffDays = Math.round((toDate - fromDate) / (1000 * 60 * 60 * 24));
-
-  if (compareTo === 'previous_year') {
-    const compFrom = new Date(fromDate);
-    compFrom.setFullYear(compFrom.getFullYear() - 1);
-    const compTo = new Date(toDate);
-    compTo.setFullYear(compTo.getFullYear() - 1);
-    return { compFrom: fmtDate(compFrom), compTo: fmtDate(compTo) };
-  }
-
-  const compTo = new Date(fromDate);
-  compTo.setDate(compTo.getDate() - 1);
-  const compFrom = new Date(compTo);
-  compFrom.setDate(compFrom.getDate() - diffDays);
-  return { compFrom: fmtDate(compFrom), compTo: fmtDate(compTo) };
-}
-
-function pctChange(current, previous) {
-  if (previous === 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - previous) / previous) * 10000) / 100;
-}
-
-function daysBetween(from, to) {
-  return Math.max(1, Math.round((new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24)) + 1);
-}
-
-function fmtDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 // ─── Trend YTD ─────────────────────────────────────────
 const ytdCache = new Map();
 const YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
@@ -970,14 +850,6 @@ app.get('/api/trend/ytd', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-function getISOWeek(d) {
-  const date = new Date(d.getTime());
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-  const week1 = new Date(date.getFullYear(), 0, 4);
-  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-}
 
 // ─── Budget Daily Spend YTD ────────────────────────────
 const dailySpendCache = new Map();
@@ -1123,8 +995,10 @@ app.get('/api/ga4/trend/ytd', async (req, res) => {
           sessions: g4.sessions,
           users: g4.users,
           transactions: g4.transactions,
+          newCustomers: g4.newCustomers,
           cvr: g4.cvr,
           aov: g4.aov,
+          bounceRate: g4.bounceRate,
           cost: ads.spend, // Ads spend
         };
       });
@@ -1170,7 +1044,9 @@ app.get('/api/ga4/trend/ytd', async (req, res) => {
           sessions: rows.reduce((s, r) => s + r.sessions, 0),
           users: rows.reduce((s, r) => s + r.users, 0),
           transactions: rows.reduce((s, r) => s + r.transactions, 0),
+          newCustomers: rows.reduce((s, r) => s + (r.newCustomers || 0), 0),
           cost: rows.reduce((s, r) => s + r.cost, 0),
+          bounced: rows.reduce((s, r) => s + (r.bounceRate * r.sessions), 0),
         };
 
         return {
@@ -1180,6 +1056,8 @@ app.get('/api/ga4/trend/ytd', async (req, res) => {
           roas: agg.cost > 0 ? r2(agg.revenue / agg.cost) : 0,
           cvr: agg.sessions > 0 ? r2((agg.transactions / agg.sessions) * 100) : 0,
           aov: agg.transactions > 0 ? r2(agg.revenue / agg.transactions) : 0,
+          bounceRate: agg.sessions > 0 ? r2((agg.bounced / agg.sessions) * 100) : 0,
+          newCustomersRate: agg.transactions > 0 ? r2((agg.newCustomers / agg.transactions) * 100) : 0,
         };
       }).sort((a, b) => a.period.localeCompare(b.period));
     }
@@ -1198,18 +1076,38 @@ function aggregateGA4Metrics(rows) {
   const revenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
   const sessions = rows.reduce((s, r) => s + (r.sessions || 0), 0);
   const transactions = rows.reduce((s, r) => s + (r.transactions || 0), 0);
+  const newCustomers = rows.reduce((s, r) => s + (r.newCustomers || 0), 0);
   return {
     revenue,
     sessions,
     transactions,
+    newCustomers,
     users: rows.reduce((s, r) => s + (r.users || 0), 0),
     cvr: sessions > 0 ? (transactions / sessions) * 100 : 0,
     aov: transactions > 0 ? revenue / transactions : 0,
+    bounceRate: sessions > 0 ? rows.reduce((s, r) => s + (r.bounceRate || 0) * r.sessions, 0) / sessions : 0,
   };
 }
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
+});
+
+app.post('/api/system/reboot', (req, res) => {
+  console.log('Reboot requested from dashboard...');
+  res.json({ message: 'Rebooting...' });
+  // 1. Close HTTP server to free the port, 2. touch self to trigger node --watch restart.
+  setTimeout(() => {
+    server.close(() => {
+      const selfPath = fileURLToPath(import.meta.url);
+      const now = new Date();
+      fs.utimes(selfPath, now, now, () => {
+        // node --watch will pick up the file change and restart.
+        // process.exit ensures we don't linger if --watch is not active (prod).
+        setTimeout(() => process.exit(0), 200);
+      });
+    });
+  }, 300);
 });

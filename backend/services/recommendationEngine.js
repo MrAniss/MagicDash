@@ -1,6 +1,5 @@
 import { getSignalRows } from '../googleAdsClient.js';
-
-function r2(v) { return Math.round(v * 100) / 100; }
+import { r2 } from '../dateUtils.js';
 
 function subDays(n) {
   const d = new Date();

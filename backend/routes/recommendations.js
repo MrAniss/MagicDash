@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../auth.js';
 import { getCampaignAuditData } from '../googleAdsClient.js';
+import { r2 } from '../dateUtils.js';
 
 const router = Router();
-
-function r2(v) { return Math.round(v * 100) / 100; }
 
 // ─── Recommendation engine ──────────────────────────────
 
@@ -186,21 +185,6 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('Recommendations error:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/recommendations/summary ──────────────────
-router.get('/summary', async (req, res) => {
-  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    const { brand = 'ALL' } = req.query;
-    const campaigns = await getCampaignAuditData(brand === 'ALL' ? 'ALL' : brand.toUpperCase().replace(/ /g, '_'));
-    const allRecs = campaigns.flatMap(c => scoreRecommendation(c));
-    const high = allRecs.filter(r => r.priority === 'HIGH').length;
-    res.json({ total: allRecs.length, high, medium: allRecs.length - high });
-  } catch (err) {
-    console.error('Summary error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

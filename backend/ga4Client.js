@@ -1,7 +1,8 @@
 import { getOAuth2Client, getValidAccessToken } from './auth.js';
-import { GA4_PROPERTIES, BRAND_KEY_TO_PROPERTY } from './config/ga4Properties.js';
+import { GA4_PROPERTIES, BRAND_KEY_TO_PROPERTY, resolvePropertyId } from './config/ga4Properties.js';
 import { GA4_STREAMS, setGA4Streams } from './config/ga4Streams.js';
 import { getFunnelEvents } from './config/ga4FunnelEvents.js';
+import { r2 } from './dateUtils.js';
 
 // ─── Cache ─────────────────────────────────────────────
 const cache = new Map();
@@ -16,7 +17,7 @@ export function getGA4Streams() {
 }
 
 export async function getGA4Hostnames({ brand = 'COCOONCENTER', from, to }) {
-  const properties = resolvePropertyIds(brand);
+  const properties = resolvePropertyIds(brand, 'ALL');
   const result = {};
   for (const [bKey, propId] of properties) {
     const rows = await runGA4Report({
@@ -176,9 +177,9 @@ function parseGA4Response(response, dimensions, metrics) {
 
 // ─── Public API ────────────────────────────────────────
 
-function resolvePropertyIds(brand) {
+function resolvePropertyIds(brand, market = 'ALL') {
   if (brand === 'ALL') return Object.entries(BRAND_KEY_TO_PROPERTY);
-  const propId = BRAND_KEY_TO_PROPERTY[brand];
+  const propId = resolvePropertyId(brand, market);
   if (!propId) return [];
   return [[brand, propId]];
 }
@@ -229,27 +230,22 @@ const MARKET_COUNTRIES = {
 // → inclus dans le cache key pour invalider automatiquement si la logique change
 function resolveFilterTag(brand, market) {
   if (!market || market === 'ALL') return 'all';
-  const brandName = brand === 'COCOONCENTER' ? 'Cocooncenter'
-    : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
-    : brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
-    : brand;
-  const streams   = GA4_STREAMS[brandName];
+  const bKey = (brand || '').toUpperCase();
+  
+  // Use UPPERCASE keys for lookup in config objects
+  const streams = GA4_STREAMS[bKey];
   if (streams?.[market])                    return `stream:${streams[market]}`;
-  if (MARKET_HOSTNAMES[brand]?.[market])    return `host:${MARKET_HOSTNAMES[brand][market]}`;
-  if (MARKET_COUNTRIES[brand]?.[market])    return `country:${MARKET_COUNTRIES[brand][market]}`;
+  if (MARKET_HOSTNAMES[bKey]?.[market])     return `host:${MARKET_HOSTNAMES[bKey][market]}`;
+  if (MARKET_COUNTRIES[bKey]?.[market])     return `country:${MARKET_COUNTRIES[bKey][market]}`;
   return 'nofilter';
 }
 
 function buildStreamFilter(brand, market) {
   if (!market || market === 'ALL') return null;
-
-  const brandName = brand === 'COCOONCENTER' ? 'Cocooncenter'
-    : brand === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
-    : brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
-    : brand;
+  const bKey = (brand || '').toUpperCase();
 
   // Essai 1 : filtre par streamId (Admin API)
-  const streams = GA4_STREAMS[brandName];
+  const streams = GA4_STREAMS[bKey];
   if (streams) {
     const streamId = streams[market];
     if (streamId) {
@@ -263,10 +259,9 @@ function buildStreamFilter(brand, market) {
   }
 
   // Essai 2 : fallback hostname
-  const hostnames = MARKET_HOSTNAMES[brand];
+  const hostnames = MARKET_HOSTNAMES[bKey];
   if (hostnames?.[market]) {
     const hostname = hostnames[market];
-    console.log(`GA4: no streamId for ${brand}/${market}, fallback hostname (${hostname})`);
     return {
       filter: {
         fieldName: 'hostName',
@@ -276,9 +271,8 @@ function buildStreamFilter(brand, market) {
   }
 
   // Essai 3 : hostname partagé + pays (marchés sans domaine propre)
-  const shared = MARKET_SHARED[brand]?.[market];
+  const shared = MARKET_SHARED[bKey]?.[market];
   if (shared) {
-    console.log(`GA4: shared domain for ${brand}/${market} → hostname(${shared.hostname}) + country(${shared.country})`);
     return {
       andGroup: {
         expressions: [
@@ -289,15 +283,24 @@ function buildStreamFilter(brand, market) {
     };
   }
 
-  console.warn(`GA4: no filter found for ${brand}/${market} — no filter applied`);
   return null;
 }
 
 function buildSourceMediumFilter(sourceMedium) {
   if (!sourceMedium) return null;
+  // Si c'est explicitement google / cpc, on filtre sur sourceMedium
+  if (sourceMedium === 'google / cpc') {
+    return {
+      filter: {
+        fieldName: 'sessionSourceMedium',
+        stringFilter: { value: sourceMedium, matchType: 'EXACT' },
+      },
+    };
+  }
+  // Sinon, on part du principe que c'est un Default Channel Group
   return {
     filter: {
-      fieldName: 'sessionSourceMedium',
+      fieldName: 'sessionDefaultChannelGroup',
       stringFilter: { value: sourceMedium, matchType: 'EXACT' },
     },
   };
@@ -321,8 +324,8 @@ export async function getGA4Rows({ brand = 'ALL', market = 'ALL', from, to, sour
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
-  const metrics = ['sessions', 'totalRevenue', 'transactions', 'totalUsers'];
+  const properties = resolvePropertyIds(brand, market);
+  const metrics = ['sessions', 'totalRevenue', 'transactions', 'totalUsers', 'bounceRate', 'firstTimePurchasers'];
 
   let allRows = [];
   for (const [bKey, propId] of properties) {
@@ -348,15 +351,20 @@ export async function getGA4Rows({ brand = 'ALL', market = 'ALL', from, to, sour
   const grouped = {};
   for (const row of allRows) {
     if (!grouped[row.date]) {
-      grouped[row.date] = { date: row.date, sessions: 0, revenue: 0, transactions: 0, users: 0 };
+      grouped[row.date] = { date: row.date, sessions: 0, revenue: 0, transactions: 0, users: 0, bounced: 0, newCustomers: 0 };
     }
     grouped[row.date].sessions += row.sessions;
     grouped[row.date].revenue += row.totalRevenue;
     grouped[row.date].transactions += row.transactions;
     grouped[row.date].users += row.totalUsers;
+    grouped[row.date].bounced += (row.bounceRate || 0) * row.sessions;
+    grouped[row.date].newCustomers += (row.firstTimePurchasers || 0);
   }
 
-  const result = Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+  const result = Object.values(grouped).map(r => ({
+    ...r,
+    bounceRate: r.sessions > 0 ? r.bounced / r.sessions : 0
+  })).sort((a, b) => a.date.localeCompare(b.date));
   setCache(cacheKey, result);
   return result;
 }
@@ -367,32 +375,29 @@ export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sour
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
-  const metrics = ['sessions', 'totalUsers', 'firstTimePurchasers', 'transactions', 'totalRevenue'];
+  const propId = resolvePropertyId(brand, market);
+  const metrics = ['sessions', 'totalUsers', 'firstTimePurchasers', 'transactions', 'totalRevenue', 'bounceRate'];
 
-  let allRows = [];
-  for (const [bKey, propId] of properties) {
-    const filter = combineFilters(
-      buildStreamFilter(bKey, market),
-      buildSourceMediumFilter(sourceMedium)
-    );
-    const rows = await runGA4Report({
-      propertyId: propId,
-      dateFrom: from,
-      dateTo: to,
-      dimensions: ['date'],
-      metrics,
-      dimensionFilter: filter,
-    }).catch(err => {
-      console.error(`GA4 KPI query error (${bKey}):`, err.message);
-      return [];
-    });
-    allRows.push(...rows);
-  }
+  const filter = combineFilters(
+    buildStreamFilter(brand, market),
+    buildSourceMediumFilter(sourceMedium)
+  );
 
-  const agg = aggregateGA4Rows(allRows);
+  const rows = await runGA4Report({
+    propertyId: propId,
+    dateFrom: from,
+    dateTo: to,
+    dimensions: ['date'],
+    metrics,
+    dimensionFilter: filter,
+  }).catch(err => {
+    console.error(`GA4 KPI query error (${brand}/${market}):`, err.message);
+    return [];
+  });
+
+  const agg = aggregateGA4Rows(rows);
   setCache(cacheKey, agg);
-  console.log(`GA4 KPIs: ${allRows.length} rows (brand=${brand}, ${from} to ${to}) → ${agg.sessions} sessions`);
+  console.log(`GA4 KPIs: ${rows.length} rows (brand=${brand}, mkt=${market}, ${from} to ${to}) → ${agg.sessions} sessions`);
   return agg;
 }
 
@@ -402,7 +407,7 @@ export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, gra
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
+  const properties = resolvePropertyIds(brand, market);
   const metrics = ['sessions', 'totalRevenue', 'transactions'];
 
   let allRows = [];
@@ -455,7 +460,7 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
+  const properties = resolvePropertyIds(brand, market);
   const metrics = ['sessions', 'totalUsers', 'firstTimePurchasers', 'totalRevenue', 'transactions'];
 
   async function fetchChannelRows(dateFrom, dateTo) {
@@ -545,18 +550,18 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
 
 // ─── GET /api/ga4/bounce-rate-ytd ─────────────────────
 
-export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' }) {
+export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', sourceMedium, granularity = 'week' }) {
   const year = new Date().getFullYear();
   const from = `${year}-01-01`;
   const to   = new Date().toISOString().slice(0, 10);
 
   const filterTag = resolveFilterTag(brand, market);
-  const cacheKey  = `ga4_bounce_ytd_${brand}_${market}_${filterTag}_${source}_${granularity}_${year}`;
+  const cacheKey  = `ga4_bounce_ytd_${brand}_${market}_${filterTag}_${sourceMedium || 'all'}_${granularity}_${year}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
-  const seaFilter  = source === 'seo' ? buildSourceMediumFilter('google / cpc') : null;
+  const properties = resolvePropertyIds(brand, market);
+  const seaFilter  = buildSourceMediumFilter(sourceMedium);
 
   let allRows = [];
   for (const [bKey, propId] of properties) {
@@ -647,18 +652,18 @@ export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', sourc
 
 // ─── GET /api/ga4/cvr-aov-ytd ──────────────────────────
 
-export async function getGA4CvrAovYtd({ brand = 'ALL', market = 'ALL', source = 'all', granularity = 'week' }) {
+export async function getGA4CvrAovYtd({ brand = 'ALL', market = 'ALL', sourceMedium, granularity = 'week' }) {
   const year = new Date().getFullYear();
   const from = `${year}-01-01`;
   const to   = new Date().toISOString().slice(0, 10);
 
   const filterTag = resolveFilterTag(brand, market);
-  const cacheKey  = `ga4_cvr_aov_ytd_${brand}_${market}_${filterTag}_${source}_${granularity}_${year}`;
+  const cacheKey  = `ga4_cvraov_ytd_${brand}_${market}_${filterTag}_${sourceMedium || 'all'}_${granularity}_${year}`;
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties = resolvePropertyIds(brand);
-  const seaFilter  = source === 'seo' ? buildSourceMediumFilter('google / cpc') : null;
+  const properties = resolvePropertyIds(brand, market);
+  const seaFilter  = buildSourceMediumFilter(sourceMedium);
 
   let allRows = [];
   for (const [bKey, propId] of properties) {
@@ -804,7 +809,7 @@ export async function getGA4FunnelYtd({ brand = 'ALL', market = 'ALL', granulari
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
 
-  const properties  = resolvePropertyIds(brand);
+  const properties = resolvePropertyIds(brand, market);
   const funnelSteps = getFunnelEvents(brand !== 'ALL' ? brand : null);
   const eventNames  = funnelSteps.map(s => s.eventName);
 
@@ -885,13 +890,15 @@ export async function getGA4FunnelYtd({ brand = 'ALL', market = 'ALL', granulari
 // ─── Helpers ───────────────────────────────────────────
 
 function aggregateGA4Rows(rows) {
-  let sessions = 0, users = 0, newCustomers = 0, transactions = 0, revenue = 0;
+  let sessions = 0, users = 0, newCustomers = 0, transactions = 0, revenue = 0, sumBounce = 0;
   for (const r of rows) {
-    sessions += r.sessions || 0;
+    const rowSessions = r.sessions || 0;
+    sessions += rowSessions;
     users += r.totalUsers || 0;
     newCustomers += r.firstTimePurchasers || 0;
     transactions += r.transactions || 0;
     revenue += r.totalRevenue || 0;
+    sumBounce += (r.bounceRate || 0) * rowSessions;
   }
   return {
     sessions,
@@ -899,6 +906,7 @@ function aggregateGA4Rows(rows) {
     newCustomers,
     transactions,
     revenue: r2(revenue),
+    bounceRate: sessions > 0 ? r2((sumBounce / sessions) * 100) : 0,
     cvr: sessions > 0 ? r2((transactions / sessions) * 100) : 0,
     aov: transactions > 0 ? r2(revenue / transactions) : 0,
   };
@@ -916,5 +924,3 @@ function granularityKey(dateStr, gran) {
   }
   return dateStr;
 }
-
-function r2(v) { return Math.round(v * 100) / 100; }
