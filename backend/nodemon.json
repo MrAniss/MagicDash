@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js", "auth.js", "routes", "services", "config", "database", "*.js"],
+  "ext": "js,json",
+  "ignore": ["data/*", "tokens.json", "*.log"],
+  "delay": 200
+}

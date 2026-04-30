@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1098,16 +1097,11 @@ const server = app.listen(PORT, () => {
 app.post('/api/system/reboot', (req, res) => {
   console.log('Reboot requested from dashboard...');
   res.json({ message: 'Rebooting...' });
-  // 1. Close HTTP server to free the port, 2. touch self to trigger node --watch restart.
+  // Exit 42 is the signal for run.js wrapper to restart. nodemon also restarts on exit.
+  // If neither wrapper is in place, the process just stops.
   setTimeout(() => {
     server.close(() => {
-      const selfPath = fileURLToPath(import.meta.url);
-      const now = new Date();
-      fs.utimes(selfPath, now, now, () => {
-        // node --watch will pick up the file change and restart.
-        // process.exit ensures we don't linger if --watch is not active (prod).
-        setTimeout(() => process.exit(0), 200);
-      });
+      setTimeout(() => process.exit(42), 200);
     });
   }, 300);
 });
