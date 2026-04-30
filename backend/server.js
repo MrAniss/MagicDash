@@ -16,6 +16,7 @@ import { getBudgetForMonth, getPCSBudgetForMonth, clearBudgetCache } from './ser
 import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
 import { clearGA4Cache, getGA4Rows } from './ga4Client.js';
 import { clearMcCache } from './services/merchantCenterClient.js';
+import { initCacheWarmer } from './services/cacheWarmer.js';
 import ga4Router from './routes/ga4.js';
 import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
@@ -1092,6 +1093,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }
 
 const server = app.listen(PORT, () => {
   console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
+  initCacheWarmer();
 });
 
 app.post('/api/system/reboot', (req, res) => {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { fEur, fNum, fROAS, fPct } from '../utils/formatters';
 import { fetchApi } from '../utils/api';
 import { downloadCsv, copyTsv } from '../utils/exportTable';
@@ -118,6 +119,115 @@ function PriceScorecards({ brand, market, from, to }) {
   );
 }
 
+// ─── Pie charts (price scoring distribution) ──────────────
+
+const PRICE_STATUS_META = {
+  COMPETITIVE: { label: 'Compétitifs', color: '#0E9F6E' },
+  ON_PAR:      { label: 'Prix Marché', color: '#1E88E5' },
+  EXPENSIVE:   { label: 'Trop Chers',  color: '#E8524A' },
+  NO_DATA:     { label: 'Sans data',   color: '#9CA3AF' },
+};
+
+function PricePie({ title, data, totalLabel, totalValue, valueFormatter }) {
+  const chartData = data.filter((d) => d.value > 0);
+  return (
+    <div className="bg-white p-4 rounded-card border border-border shadow-sm">
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-[10px] font-bold text-navy-muted uppercase tracking-widest">{title}</p>
+        <p className="text-[10px] font-semibold text-navy-muted/70">
+          {totalLabel}: <span className="text-navy">{valueFormatter(totalValue)}</span>
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 items-center">
+        <ResponsiveContainer width="100%" height={140}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="label"
+              innerRadius={36}
+              outerRadius={62}
+              paddingAngle={2}
+              isAnimationActive={false}
+            >
+              {chartData.map((entry) => (
+                <Cell key={entry.key} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(v, name) => [valueFormatter(v), name]}
+              contentStyle={{ fontSize: 11, borderRadius: 6, border: '1px solid #E2E6EF' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="space-y-1.5">
+          {data.map((item) => (
+            <div key={item.key} className="flex items-center gap-1.5">
+              <span
+                className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                style={{ background: item.color }}
+              />
+              <span className="text-[11px] text-navy-muted truncate">{item.label}</span>
+              <span className="text-[11px] font-semibold text-navy tabular-nums">
+                {valueFormatter(item.value)}
+              </span>
+              <span className="text-[10px] text-navy-muted/60 tabular-nums">
+                ({fPct(item.pct)})
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PriceScoringPies({ brand, market, from, to }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['shopping', 'price-summary', brand, market, from, to],
+    queryFn: () => fetchApi('/api/shopping/price-summary', { brand, market, from, to }),
+  });
+
+  if (isLoading)
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="h-44 bg-white rounded-card border border-border animate-pulse" />
+        <div className="h-44 bg-white rounded-card border border-border animate-pulse" />
+      </div>
+    );
+
+  const buildSeries = (countsOrCost, pctMap) =>
+    Object.entries(PRICE_STATUS_META).map(([key, meta]) => ({
+      key,
+      label: meta.label,
+      color: meta.color,
+      value: countsOrCost?.[key] || 0,
+      pct: pctMap?.[key] || 0,
+    }));
+
+  const productSeries = buildSeries(data?.counts, data?.pct);
+  const costSeries    = buildSeries(data?.cost,   data?.cost_pct);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <PricePie
+        title="Répartition des produits par scoring prix"
+        data={productSeries}
+        totalLabel="Total"
+        totalValue={data?.total || 0}
+        valueFormatter={(v) => fNum(v)}
+      />
+      <PricePie
+        title="Investissement par scoring prix"
+        data={costSeries}
+        totalLabel="Coût"
+        totalValue={data?.total_cost || 0}
+        valueFormatter={(v) => fEur(v)}
+      />
+    </div>
+  );
+}
+
 // ─── Main view ────────────────────────────────────────────
 
 export default function ShoppingView({ filters }) {
@@ -126,6 +236,12 @@ export default function ShoppingView({ filters }) {
   return (
     <div className="space-y-6">
       <PriceScorecards brand={brand} market={market} from={from} to={to} />
+      <PriceScoringPies brand={brand} market={market} from={from} to={to} />
+
+      {/* Scoring POAS (CC FR only — hidden unless brand=CC and market=FR) */}
+      {brand === 'COCOONCENTER' && market === 'FR' && (
+        <ShoppingScoringCharts brand={brand} market={market} from={from} to={to} />
+      )}
 
       {/* Section 1 : Top marques (Opened by default) */}
       <AccordionSection
@@ -156,11 +272,6 @@ export default function ShoppingView({ filters }) {
       >
         <FeedQualitySection brand={brand} market={market} />
       </AccordionSection>
-
-      {/* Scoring charts (CC FR only — hidden unless brand=CC and market=FR) */}
-      {brand === 'COCOONCENTER' && market === 'FR' && (
-        <ShoppingScoringCharts brand={brand} market={market} from={from} to={to} />
-      )}
     </div>
   );
 }
@@ -400,17 +511,23 @@ function TopFlopSection({ brand, market, from, to }) {
       label: view === 'product' ? 'PRODUIT' : view === 'brand' ? 'MARQUE' : 'CATEGORIE',
       align: 'left',
     },
+    { key: 'cost', label: 'COST', align: 'right' },
+    { key: 'delta_cost', label: 'Δ COST %', align: 'right', isPct: true },
     { key: 'revenue', label: 'REVENUE', align: 'right' },
-    { key: 'delta_revenue', label: 'DELTA REV', align: 'right', isPct: true },
+    { key: 'delta_revenue', label: 'Δ REV %', align: 'right', isPct: true },
     { key: 'roas', label: 'ROAS', align: 'right' },
+    { key: 'delta_roas', label: 'Δ ROAS %', align: 'right', isPct: true },
   ];
 
   const getExportData = (items) =>
     (items || []).map((it) => ({
       label: it.label,
+      cost: it.current?.cost || 0,
+      delta_cost: it.delta_cost || 0,
       revenue: it.current?.revenue || 0,
       delta_revenue: it.delta_revenue || 0,
       roas: it.current?.roas || 0,
+      delta_roas: it.delta_roas || 0,
     }));
 
   return (
@@ -500,58 +617,81 @@ function TopFlopTable({ items, view }) {
 
   return (
     <div className="overflow-x-auto overflow-y-auto max-h-[400px]">
-      <table className="w-full text-[13px] text-navy border-collapse">
+      <table className="w-full text-[11px] text-navy border-collapse">
         <thead className="sticky top-0 z-10 bg-white">
           <tr className="bg-bg-page border-b border-border">
-            <th className="px-3 py-2 text-left text-[10px] font-bold text-navy-muted uppercase tracking-wider">
+            <th className="px-2 py-2 text-left text-[9px] font-bold text-navy-muted uppercase tracking-wider">
               {view === 'product' ? 'ID / PRODUIT' : view === 'brand' ? 'MARQUE' : 'CATÉGORIE'}
             </th>
-            <th className="px-3 py-2 text-right text-[10px] font-bold text-navy-muted uppercase tracking-wider">
+            <th className="px-2 py-2 text-right text-[9px] font-bold text-navy-muted uppercase tracking-wider">
+              COST
+            </th>
+            <th className="px-2 py-2 text-right text-[9px] font-bold text-navy-muted uppercase tracking-wider">
+              Δ %
+            </th>
+            <th className="px-2 py-2 text-right text-[9px] font-bold text-navy-muted uppercase tracking-wider">
               REVENUE
             </th>
-            <th className="px-3 py-2 text-right text-[10px] font-bold text-navy-muted uppercase tracking-wider">
-              Δ REV.
+            <th className="px-2 py-2 text-right text-[9px] font-bold text-navy-muted uppercase tracking-wider">
+              Δ %
             </th>
-            <th className="px-3 py-2 text-right text-[10px] font-bold text-navy-muted uppercase tracking-wider">
+            <th className="px-2 py-2 text-right text-[9px] font-bold text-navy-muted uppercase tracking-wider">
               ROAS
             </th>
           </tr>
         </thead>
         <tbody>
-          {items.map((it, i) => (
-            <tr
-              key={i}
-              className={`border-b border-border/50 hover:bg-navy/5 transition-colors ${i % 2 === 1 ? 'bg-[#FAFBFD]' : 'bg-white'}`}
-            >
-              <td className="px-3 py-3">
-                <div className="flex flex-col">
-                  {view === 'product' && (
-                    <span className="text-[10px] font-bold text-navy-muted tabular-nums">
-                      {it.item_id}
-                    </span>
-                  )}
-                  <span className="font-medium truncate max-w-[200px]" title={it.label}>
-                    {it.label}
-                  </span>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right font-medium tabular-nums">
-                {fEur(it.current?.revenue || 0)}
-              </td>
-              <td
-                className={`px-3 py-3 text-right font-bold tabular-nums ${it.delta_revenue > 0 ? 'text-success' : 'text-danger'}`}
-              >
-                {it.delta_revenue > 0 ? '▲' : '▼'} {Math.abs(it.delta_revenue).toFixed(1)}%
-              </td>
-              <td className="px-3 py-3 text-right">
-                <span
-                  className={`px-1.5 py-0.5 rounded-sm font-bold tabular-nums ${it.current?.roas >= 4 ? 'bg-success/10 text-success' : it.current?.roas >= 2.5 ? 'bg-warning/10 text-warning' : 'bg-danger/10 text-danger'}`}
-                >
-                  {fROASx(it.current?.roas)}
+          {items.map((it, i) => {
+            const dCost = it.delta_cost;
+            const dRev  = it.delta_revenue;
+            const dRoas = it.delta_roas;
+            const renderDelta = (v) => {
+              if (v == null) return <span className="text-navy-muted">—</span>;
+              const cls = v > 0 ? 'text-success' : v < 0 ? 'text-danger' : 'text-navy-muted';
+              return (
+                <span className={`font-medium tabular-nums ${cls}`}>
+                  {v > 0 ? '▲' : v < 0 ? '▼' : ''} {Math.abs(v).toFixed(1)}%
                 </span>
-              </td>
-            </tr>
-          ))}
+              );
+            };
+            return (
+              <tr
+                key={i}
+                className={`border-b border-border/50 hover:bg-navy/5 transition-colors ${i % 2 === 1 ? 'bg-[#FAFBFD]' : 'bg-white'}`}
+              >
+                <td className="px-2 py-2.5">
+                  <div className="flex flex-col">
+                    {view === 'product' && (
+                      <span className="text-[9px] font-bold text-navy-muted tabular-nums">
+                        {it.item_id}
+                      </span>
+                    )}
+                    <span className="font-medium truncate max-w-[180px]" title={it.label}>
+                      {it.label}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-2 py-2.5 text-right font-medium tabular-nums">
+                  {fEur(it.current?.cost || 0)}
+                </td>
+                <td className="px-2 py-2.5 text-right">{renderDelta(dCost)}</td>
+                <td className="px-2 py-2.5 text-right font-medium tabular-nums">
+                  {fEur(it.current?.revenue || 0)}
+                </td>
+                <td className="px-2 py-2.5 text-right">{renderDelta(dRev)}</td>
+                <td className="px-2 py-2.5 text-right">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span
+                      className={`px-1.5 py-0.5 rounded-sm font-bold tabular-nums ${it.current?.roas >= 4 ? 'bg-success/10 text-success' : it.current?.roas >= 2.5 ? 'bg-warning/10 text-warning' : 'bg-danger/10 text-danger'}`}
+                    >
+                      {fROASx(it.current?.roas)}
+                    </span>
+                    <span className="text-[10px]">{renderDelta(dRoas)}</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -559,6 +699,9 @@ function TopFlopTable({ items, view }) {
 }
 
 function FeedQualitySection({ brand, market }) {
+  const [search, setSearch]       = useState('');
+  const [codeFilter, setCodeFilter] = useState(null); // null = all reasons
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['shopping', 'feed-quality', brand, market],
     queryFn: () => fetchApi('/api/shopping/feed-quality', { brand, market }),
@@ -574,81 +717,160 @@ function FeedQualitySection({ brand, market }) {
   if (!data?.products?.length)
     return (
       <div className="py-12 text-center text-sm text-success font-bold flex items-center justify-center gap-2">
-        <span>✨</span> Aucun problème critique détecté dans le flux.
+        <span>✨</span> Aucun produit refusé sur ce périmètre.
       </div>
     );
 
+  const reasonSummary = data.reason_summary || [];
+  const total         = data.total_disapproved || 0;
+
+  // Apply filters
+  const filtered = data.products.filter((p) => {
+    if (codeFilter && !p.issues.some((iss) => iss.code === codeFilter)) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      if (!(p.item_id?.toLowerCase().includes(s) || p.title?.toLowerCase().includes(s))) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-4 gap-4">
-        {Object.entries(data.summary)
-          .filter(([k]) => !['total_issues', 'other'].includes(k))
-          .map(([key, count]) => (
-            <div key={key} className="bg-white p-3.5 rounded-card border border-border shadow-sm">
-              <p className="text-[10px] font-bold text-navy-muted uppercase tracking-widest mb-1">
-                {key}
-              </p>
-              <p className={`text-xl font-bold ${count > 0 ? 'text-danger' : 'text-success'}`}>
-                {fNum(count)}
-              </p>
-            </div>
-          ))}
+    <div className="space-y-4">
+      {/* Header : total + chips de raisons */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-bold text-navy-muted uppercase tracking-widest">
+          {fNum(total)} produits refusés
+        </span>
+        <span className="text-[11px] text-navy-muted/60">·</span>
+        <span className="text-[10px] text-navy-muted uppercase tracking-wider">Filtrer&nbsp;:</span>
+        <button
+          onClick={() => setCodeFilter(null)}
+          className={`px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-tight border transition-colors ${
+            codeFilter == null
+              ? 'bg-navy text-white border-navy'
+              : 'bg-white text-navy-muted border-border hover:border-navy/40'
+          }`}
+        >
+          Toutes ({fNum(total)})
+        </button>
+        {reasonSummary.slice(0, 12).map((r) => (
+          <button
+            key={r.code}
+            onClick={() => setCodeFilter(r.code === codeFilter ? null : r.code)}
+            title={r.description}
+            className={`px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-tight border transition-colors ${
+              codeFilter === r.code
+                ? 'bg-danger text-white border-danger'
+                : 'bg-danger/5 text-danger border-danger/20 hover:bg-danger/10'
+            }`}
+          >
+            {r.code} ({fNum(r.count)})
+          </button>
+        ))}
       </div>
 
+      {/* Search */}
+      <input
+        type="text"
+        placeholder="Rechercher par ID ou titre…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full md:w-80 px-3 py-1.5 text-[12px] border border-border rounded-inner focus:outline-none focus:border-navy/50 bg-white"
+      />
+
+      {/* Tableau */}
       <div className="bg-white rounded-card border border-border overflow-hidden shadow-sm">
-        <div className="overflow-y-auto max-h-[500px]">
-          <table className="w-full text-[13px] text-navy border-collapse">
+        <div className="overflow-y-auto max-h-[600px]">
+          <table className="w-full text-[12px] text-navy border-collapse">
             <thead className="sticky top-0 z-10 bg-white shadow-sm">
               <tr className="bg-bg-page border-b border-border">
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-navy-muted uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[10px] font-bold text-navy-muted uppercase tracking-wider w-[260px]">
                   ID / Produit
                 </th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-navy-muted uppercase tracking-wider">
-                  Problèmes détectés
-                </th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold text-navy-muted uppercase tracking-wider">
-                  Sévérité
+                <th className="px-3 py-2 text-left text-[10px] font-bold text-navy-muted uppercase tracking-wider">
+                  Raison(s) Merchant Center
                 </th>
               </tr>
             </thead>
             <tbody>
-              {data.products.map((p, i) => (
-                <tr
-                  key={i}
-                  className={`border-b border-border/50 hover:bg-navy/5 transition-colors ${i % 2 === 1 ? 'bg-[#FAFBFD]' : 'bg-white'}`}
-                >
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-navy-muted tabular-nums">
-                        {p.item_id}
-                      </span>
-                      <span className="font-medium truncate max-w-[280px] text-navy">
-                        {p.title}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-1.5">
-                      {p.issues.map((iss, j) => (
-                        <span
-                          key={j}
-                          className="px-2 py-0.5 rounded-sm bg-danger/10 text-danger border border-danger/20 text-[10px] font-bold uppercase tracking-tight"
-                          title={iss.description}
-                        >
-                          {iss.type}: {iss.attribute}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${p.status === 'disapproved' ? 'bg-danger text-white' : 'bg-warning text-navy'}`}
-                    >
-                      {p.status}
-                    </span>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="px-4 py-12 text-center text-xs text-navy-muted italic">
+                    Aucun produit ne correspond aux filtres.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((p, i) => (
+                  <tr
+                    key={p.item_id + i}
+                    className={`border-b border-border/50 hover:bg-navy/5 transition-colors align-top ${
+                      i % 2 === 1 ? 'bg-[#FAFBFD]' : 'bg-white'
+                    }`}
+                  >
+                    <td className="px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-bold text-navy-muted tabular-nums break-all">
+                          {p.item_id}
+                        </span>
+                        <span className="font-medium text-navy text-[12px] leading-snug" title={p.title}>
+                          {p.title || '—'}
+                        </span>
+                        {p.brand && (
+                          <span className="text-[10px] text-navy-muted">{p.brand}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-2">
+                        {p.issues.map((iss, j) => (
+                          <div
+                            key={j}
+                            className="border-l-2 border-danger pl-3 py-0.5 text-[12px]"
+                          >
+                            <div className="font-semibold text-navy leading-snug">
+                              {iss.description || iss.code}
+                            </div>
+                            {iss.detail && iss.detail !== iss.description && (
+                              <div className="text-[11px] text-navy-muted mt-0.5 leading-snug">
+                                {iss.detail}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {iss.attribute && (
+                                <span className="px-1.5 py-0.5 rounded-sm bg-bg-page text-navy-muted border border-border text-[10px] font-mono">
+                                  {iss.attribute}
+                                </span>
+                              )}
+                              {iss.code && (
+                                <span className="px-1.5 py-0.5 rounded-sm bg-danger/10 text-danger text-[10px] font-mono">
+                                  {iss.code}
+                                </span>
+                              )}
+                              {iss.resolution && (
+                                <span className="text-[10px] text-navy-muted/70 uppercase tracking-tight">
+                                  · {iss.resolution.replace(/_/g, ' ')}
+                                </span>
+                              )}
+                              {iss.documentation && (
+                                <a
+                                  href={iss.documentation}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-blue-600 hover:underline"
+                                >
+                                  Doc ↗
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

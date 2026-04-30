@@ -9,7 +9,6 @@ import CampaignDrilldown from './components/CampaignDrilldown';
 import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
 import ShoppingView from './components/ShoppingView';
-import ShoppingScoringCharts from './components/ShoppingScoringCharts';
 import WeeklyPerformanceSummary from './components/WeeklyPerformanceSummary';
 import AccordionSection from './components/AccordionSection';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
@@ -96,19 +95,6 @@ export default function App() {
             <CostKpiChart filters={filters} />
             <GranularityTable filters={filters} />
             <MarketTable data={markets.data} isLoading={markets.isLoading} />
-
-            <AccordionSection
-              title="Analyse par Scoring Shopping"
-              badge="Scoring"
-              isOpenDefault={false}
-            >
-              <ShoppingScoringCharts
-                brand={filters.brand}
-                market={filters.market}
-                from={filters.from}
-                to={filters.to}
-              />
-            </AccordionSection>
 
             <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
               <CampaignDrilldown filters={filters} />

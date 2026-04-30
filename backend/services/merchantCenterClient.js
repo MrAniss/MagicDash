@@ -1,5 +1,12 @@
 import { google } from 'googleapis';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getOAuth2Client } from '../auth.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CACHE_DIR = path.join(__dirname, '..', '.cache');
+const CACHE_FILE = path.join(CACHE_DIR, 'mc-cache.json');
 
 // ─── Merchant Center IDs ──────────────────────────────────
 const MC_CONFIG = {
@@ -82,6 +89,15 @@ function microsToPrice(micros) {
   return Math.round(Number(micros) / MICROS_DIVISOR * 100) / 100;
 }
 
+// Extract the ISO country code from a feed-label-style country slot in
+// productId — Cocooncenter uses custom labels like "FR_NEW", "FR_OLD" instead
+// of the bare ISO code. We want "FR_NEW" to match "FR" for filtering, and we
+// also want to match destinationStatuses' approvedCountries/disapprovedCountries
+// (which use ISO codes).
+function baseCountry(rowCountry) {
+  return String(rowCountry || '').split('_')[0];
+}
+
 // ─── Caches ───────────────────────────────────────────────
 // keyed by `${merchantId}::${countryCode || 'ALL'}`
 const priceCache  = new Map();
@@ -106,6 +122,65 @@ export function clearMcCache() {
   pcCache.clear();
   statusCache.clear();
   promoCache.clear();
+  saveCacheToDisk(); // wipe the persisted snapshot too
+}
+
+// ─── Persistent cache (disk) ──────────────────────────────
+// Survives server restarts so the first user request after a restart
+// hits warm data instead of re-fanning out across 16 MC accounts.
+// Stored as a single JSON snapshot — small enough (~few hundred KB).
+
+function serializeCache(map) {
+  return Array.from(map.entries());
+}
+
+function deserializeCache(arr, target, ttl) {
+  if (!Array.isArray(arr)) return 0;
+  const now = Date.now();
+  let loaded = 0;
+  for (const [key, entry] of arr) {
+    if (entry && entry.ts && (now - entry.ts) < ttl) {
+      target.set(key, entry);
+      loaded++;
+    }
+  }
+  return loaded;
+}
+
+export function loadCacheFromDisk() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return;
+    const raw = fs.readFileSync(CACHE_FILE, 'utf8');
+    const snap = JSON.parse(raw);
+    const p  = deserializeCache(snap.priceCache,  priceCache,  PRICE_CACHE_TTL);
+    const pc = deserializeCache(snap.pcCache,     pcCache,     PC_CACHE_TTL);
+    const st = deserializeCache(snap.statusCache, statusCache, STATUS_CACHE_TTL);
+    const pr = deserializeCache(snap.promoCache,  promoCache,  PROMO_CACHE_TTL);
+    console.log(`MC cache: loaded from disk — price=${p}, pc=${pc}, status=${st}, promo=${pr}`);
+  } catch (e) {
+    console.warn('MC cache: failed to load from disk —', e?.message);
+  }
+}
+
+let saveTimer = null;
+export function saveCacheToDisk() {
+  // Debounce — coalesce bursts of writes within 5s into a single flush.
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+      const snap = {
+        priceCache:  serializeCache(priceCache),
+        pcCache:     serializeCache(pcCache),
+        statusCache: serializeCache(statusCache),
+        promoCache:  serializeCache(promoCache),
+      };
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(snap));
+    } catch (e) {
+      console.warn('MC cache: failed to save to disk —', e?.message);
+    }
+  }, 5000);
 }
 
 // ─── Catalog prices via ProductView ───────────────────────
@@ -141,11 +216,11 @@ async function fetchProductPricesForMerchant(merchantId, countryCode = null) {
       if (!pv?.offerId || !pv?.priceMicros) continue;
 
       // Filter by country code when specified.
-      // product_view.id format: "channel:lang:COUNTRY:offerId"
+      // product_view.id format: "channel:lang:COUNTRY:offerId" — but feeds may
+      // use custom country labels ("FR_NEW") so we strip the "_*" suffix.
       if (countryCode) {
         const idParts = (pv.id || '').split(':');
-        const rowCountry = idParts[2] || '';
-        if (rowCountry !== countryCode) continue;
+        if (baseCountry(idParts[2]) !== countryCode) continue;
       }
 
       // Prefer online over local when both exist for the same offerId
@@ -165,6 +240,7 @@ async function fetchProductPricesForMerchant(merchantId, countryCode = null) {
 
   console.log(`MC catalog: ${Object.keys(prices).length} products for ${merchantId} country=${countryCode || 'ALL'}`);
   priceCache.set(cacheKey, { prices, ts: Date.now() });
+  saveCacheToDisk();
   return prices;
 }
 
@@ -296,6 +372,7 @@ export async function getPriceCompetitivenessData(brand, market = 'ALL') {
       // 3. Only cache non-empty results — avoids poisoning the cache with temporary API failures
       if (count > 0) {
         pcCache.set(cacheKey, { data: merged, ts: Date.now() });
+        saveCacheToDisk();
       } else {
         console.warn(`MC price comp [${brand}/${market}]: got 0 results — NOT caching, will retry on next request`);
       }
@@ -362,28 +439,77 @@ async function fetchProductStatusesForMerchant(merchantId, countryCode = null) {
       // productstatuses ids are like "online:fr:FR:REF123" — same shape as ProductView.id
       const idParts = (ps.productId || '').split(':');
       const rowCountry = idParts[2] || '';
-      if (countryCode && rowCountry !== countryCode) continue;
+      const productCountry = baseCountry(rowCountry); // strip "_NEW", "_OLD" etc.
+      if (countryCode && productCountry !== countryCode) continue;
 
       const offerId = idParts.slice(3).join(':') || ps.productId;
       const issues = (ps.itemLevelIssues || []).map(i => ({
-        type:        classifyIssue({ code: i.code, description: i.description, attributeName: i.attributeName }),
-        code:        i.code || null,
-        description: i.description || i.code || '',
-        attribute:   i.attributeName || null,
-        severity:    (i.servability || '').toLowerCase() || 'warning',
-        destination: i.destination || null,
+        type:          classifyIssue({ code: i.code, description: i.description, attributeName: i.attributeName }),
+        code:          i.code || null,
+        description:   i.description || i.code || '',
+        detail:        i.detail || null,
+        documentation: i.documentation || null,
+        attribute:     i.attributeName || null,
+        resolution:    i.resolution || null,
+        severity:      (i.servability || '').toLowerCase() || 'warning',
+        destination:   i.destination || null,
       }));
 
-      // Derive aggregated status from destinationStatuses (first entry) — API v2.1
-      // returns either a string field `status` or an approvedCountries array.
-      const ds = ps.destinationStatuses?.[0] || {};
-      let status = 'pending';
-      if (ds.status)                         status = normalizeAgg(ds.status);
-      else if (ds.approvedCountries?.length) status = 'active';
-      else if (ds.disapprovedCountries?.length) status = 'disapproved';
-      // Issue-driven override
-      if (issues.some(i => i.severity === 'disapproved')) status = 'disapproved';
-      else if (issues.length > 0 && status === 'active')   status = 'limited';
+      // Derive aggregated status. MC v2.1 returns `destinationStatuses` as an
+      // array of { destination, approvedCountries, pendingCountries,
+      // disapprovedCountries } — one entry per destination (Shopping ads,
+      // Free listings, etc.). A product can be approved in some countries
+      // and disapproved in others, so we must:
+      // 1. Walk ALL destinations (not just the first)
+      // 2. Match against THIS product's country (from productId), not just
+      //    "any country has X" — otherwise BE-approved products with FR
+      //    disapproval mask each other.
+      let isDisapproved = false;
+      let isApproved    = false;
+      let isPending     = false;
+      let countryArraysDecided = false;
+      for (const ds of (ps.destinationStatuses || [])) {
+        if (productCountry) {
+          if (ds.disapprovedCountries?.includes(productCountry)) {
+            isDisapproved = true; countryArraysDecided = true;
+          }
+          if (ds.approvedCountries?.includes(productCountry)) {
+            isApproved = true; countryArraysDecided = true;
+          }
+          if (ds.pendingCountries?.includes(productCountry)) {
+            isPending = true; countryArraysDecided = true;
+          }
+        } else {
+          // No country filter (rare path) — fall back to "any disapproval anywhere"
+          if (ds.disapprovedCountries?.length) { isDisapproved = true; countryArraysDecided = true; }
+          if (ds.approvedCountries?.length)    { isApproved = true;    countryArraysDecided = true; }
+          if (ds.pendingCountries?.length)     { isPending = true;     countryArraysDecided = true; }
+        }
+      }
+      // Legacy string status field — only trust as fallback when the per-country
+      // arrays gave no answer. Otherwise it can lie: MC sometimes reports
+      // status:"disapproved" globally while approvedCountries=["FR"] for a
+      // product that's actually live in FR.
+      if (!countryArraysDecided) {
+        for (const ds of (ps.destinationStatuses || [])) {
+          if (!ds.status) continue;
+          const s = String(ds.status).toLowerCase();
+          if (s.includes('disapprov')) isDisapproved = true;
+          else if (s.includes('approv') || s.includes('eligib')) isApproved = true;
+          else if (s.includes('pending')) isPending = true;
+        }
+      }
+      // Item-level issues with servability=disapproved are the only authoritative
+      // signal that this specific country is blocked — they override the
+      // approvedCountries listing if they conflict.
+      if (issues.some(i => i.severity === 'disapproved')) isDisapproved = true;
+
+      let status;
+      if (isDisapproved)                           status = 'disapproved';
+      else if (issues.length > 0 && isApproved)    status = 'limited';
+      else if (isApproved)                         status = 'active';
+      else if (isPending)                          status = 'pending';
+      else                                         status = 'pending';
 
       items.push({
         item_id: offerId,
@@ -400,6 +526,7 @@ async function fetchProductStatusesForMerchant(merchantId, countryCode = null) {
 
   console.log(`MC productstatuses ${merchantId} country=${countryCode || 'ALL'}: ${items.length} products`);
   statusCache.set(cacheKey, { items, ts: Date.now() });
+  saveCacheToDisk();
   return items;
 }
 
@@ -475,8 +602,7 @@ async function fetchSalePricesForMerchant(merchantId, countryCode = null) {
 
       if (countryCode) {
         const idParts = (pv.id || '').split(':');
-        const rowCountry = idParts[2] || '';
-        if (rowCountry !== countryCode) continue;
+        if (baseCountry(idParts[2]) !== countryCode) continue;
       }
 
       const existing = promos[pv.offerId];
@@ -500,6 +626,7 @@ async function fetchSalePricesForMerchant(merchantId, countryCode = null) {
 
   console.log(`MC sale prices ${merchantId} country=${countryCode || 'ALL'}: ${totalRows} rows, ${withSale} with sale_price, ${Object.keys(promos).length} matched after country filter`);
   promoCache.set(cacheKey, { promos, ts: Date.now() });
+  saveCacheToDisk();
   return promos;
 }
 

@@ -507,6 +507,7 @@ export function clearAuditCache() { auditCache.clear(); }
 // ─── Shopping ────────────────────────────────────────────
 
 const shoppingCache = new Map();
+const shoppingInFlight = new Map();
 const SHOPPING_CACHE_TTL = 30 * 60 * 1000;
 
 function buildShoppingGAQL(dateFrom, dateTo) {
@@ -552,44 +553,58 @@ async function queryAccountShopping(api, accountId, loginCustomerId, gaql, refre
 }
 
 export async function getShoppingData(brand, market, from, to) {
-  console.log(`getShoppingData called: brand=${brand}, market=${market}, from=${from}, to=${to}`);
   const bKey = (brand || '').toUpperCase();
   const cacheKey = `shopping|${bKey}|${market}|${from}|${to}`;
   const entry = shoppingCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < SHOPPING_CACHE_TTL) return entry.data;
   shoppingCache.delete(cacheKey);
 
-  const refreshToken = getRefreshToken();
-  const api = getApi();
-  const gaql = buildShoppingGAQL(from, to);
+  // In-flight dedup: concurrent callers share the same pending Promise instead
+  // of each firing a redundant Google Ads query (prevents cache stampede on
+  // cold cache when 3-4 shopping endpoints fire in parallel).
+  if (shoppingInFlight.has(cacheKey)) return shoppingInFlight.get(cacheKey);
 
-  const accountList = [];
-  if (bKey === 'COCOONCENTER' || bKey === 'ALL') {
-    BRANDS.COCOONCENTER.accounts
-      .filter(a => market === 'ALL' || a.market === market)
-      .forEach(a => accountList.push({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
-  }
-  if (bKey === 'PASCAL_COSTE' || bKey === 'ALL') {
-    const a = BRANDS.PASCAL_COSTE.accounts[0];
-    if (market === 'ALL' || a.market === market)
-      accountList.push({ ...a, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping', loginId: a.id });
-  }
-  if (bKey === 'PARAPHARMACIE_LAFAYETTE' || bKey === 'ALL') {
-    const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
-    if (market === 'ALL' || a.market === market)
-      accountList.push({ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id });
-  }
+  const promise = (async () => {
+    try {
+      console.log(`getShoppingData fetching: brand=${brand}, market=${market}, from=${from}, to=${to}`);
+      const refreshToken = getRefreshToken();
+      const api = getApi();
+      const gaql = buildShoppingGAQL(from, to);
 
-  const results = await Promise.all(
-    accountList.map(acc =>
-      queryAccountShopping(api, acc.id, acc.loginId, gaql, refreshToken, acc.brand, acc.brandLabel, acc.market)
-    )
-  );
+      const accountList = [];
+      if (bKey === 'COCOONCENTER' || bKey === 'ALL') {
+        BRANDS.COCOONCENTER.accounts
+          .filter(a => market === 'ALL' || a.market === market)
+          .forEach(a => accountList.push({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
+      }
+      if (bKey === 'PASCAL_COSTE' || bKey === 'ALL') {
+        const a = BRANDS.PASCAL_COSTE.accounts[0];
+        if (market === 'ALL' || a.market === market)
+          accountList.push({ ...a, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping', loginId: a.id });
+      }
+      if (bKey === 'PARAPHARMACIE_LAFAYETTE' || bKey === 'ALL') {
+        const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
+        if (market === 'ALL' || a.market === market)
+          accountList.push({ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id });
+      }
 
-  const data = results.flat();
-  console.log(`Google Ads API Shopping: ${data.length} rows fetched (brand=${bKey}, market=${market}, ${from} to ${to})`);
-  shoppingCache.set(cacheKey, { data, ts: Date.now() });
-  return data;
+      const results = await Promise.all(
+        accountList.map(acc =>
+          queryAccountShopping(api, acc.id, acc.loginId, gaql, refreshToken, acc.brand, acc.brandLabel, acc.market)
+        )
+      );
+
+      const data = results.flat();
+      console.log(`Google Ads API Shopping: ${data.length} rows fetched (brand=${bKey}, market=${market}, ${from} to ${to})`);
+      shoppingCache.set(cacheKey, { data, ts: Date.now() });
+      return data;
+    } finally {
+      shoppingInFlight.delete(cacheKey);
+    }
+  })();
+
+  shoppingInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 export function clearShoppingCache() { shoppingCache.clear(); }

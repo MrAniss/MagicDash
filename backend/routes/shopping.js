@@ -4,7 +4,7 @@ import { getShoppingData, getScoringData } from '../googleAdsClient.js';
 import { getPriceMap, getPriceCompetitivenessData, getProductStatuses } from '../services/merchantCenterClient.js';
 import { POAS_BREAKEVEN } from '../config/poasThresholds.js';
 
-import { getComparisonDates, r2 } from '../dateUtils.js';
+import { getComparisonDates, r2, pctChange } from '../dateUtils.js';
 
 const router = Router();
 
@@ -128,13 +128,15 @@ router.get('/price-summary', async (req, res) => {
     const products = aggregateProducts(rows).filter(p => p.impressions > 0);
 
     const counts = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
+    const cost   = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
     const expensiveProducts = [];
 
     for (const p of products) {
       const pc = pcMap[p.item_id];
-      if (!pc) { counts.NO_DATA++; continue; }
-      counts[pc.status] = (counts[pc.status] || 0) + 1;
-      if (pc.status === 'EXPENSIVE' && p.revenue > 0) {
+      const status = pc?.status || 'NO_DATA';
+      counts[status] = (counts[status] || 0) + 1;
+      cost[status]   = (cost[status]   || 0) + (p.cost || 0);
+      if (pc && pc.status === 'EXPENSIVE' && p.revenue > 0) {
         expensiveProducts.push({
           item_id: p.item_id, title: p.title, product_brand: p.product_brand,
           our_price: pc.our_price, benchmark_price: pc.benchmark_price,
@@ -148,15 +150,29 @@ router.get('/price-summary', async (req, res) => {
     const insights = expensiveProducts.slice(0, 10);
 
     const total = products.length;
+    const totalCost = cost.COMPETITIVE + cost.ON_PAR + cost.EXPENSIVE + cost.NO_DATA;
     res.json({
       total,
       counts,
+      cost: {
+        COMPETITIVE: r2(cost.COMPETITIVE),
+        ON_PAR:      r2(cost.ON_PAR),
+        EXPENSIVE:   r2(cost.EXPENSIVE),
+        NO_DATA:     r2(cost.NO_DATA),
+      },
       pct: {
         COMPETITIVE: total > 0 ? r2((counts.COMPETITIVE / total) * 100) : 0,
         ON_PAR:      total > 0 ? r2((counts.ON_PAR      / total) * 100) : 0,
         EXPENSIVE:   total > 0 ? r2((counts.EXPENSIVE   / total) * 100) : 0,
         NO_DATA:     total > 0 ? r2((counts.NO_DATA     / total) * 100) : 0,
       },
+      cost_pct: {
+        COMPETITIVE: totalCost > 0 ? r2((cost.COMPETITIVE / totalCost) * 100) : 0,
+        ON_PAR:      totalCost > 0 ? r2((cost.ON_PAR      / totalCost) * 100) : 0,
+        EXPENSIVE:   totalCost > 0 ? r2((cost.EXPENSIVE   / totalCost) * 100) : 0,
+        NO_DATA:     totalCost > 0 ? r2((cost.NO_DATA     / totalCost) * 100) : 0,
+      },
+      total_cost: r2(totalCost),
       insights,
     });
   } catch (err) {
@@ -251,17 +267,41 @@ router.get('/scoring', async (req, res) => {
 router.get('/brands-detail', async (req, res) => {
   if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    const { brand = 'ALL', market = 'ALL', from, to } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const [rows, pcMap] = await Promise.all([
+    const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
+
+    const [currRows, prevRows, pcMap] = await Promise.all([
       getShoppingData(brand, market, from, to),
+      getShoppingData(brand, market, compFrom, compTo),
       getPriceCompetitivenessData(brand, market),
     ]);
-    const products = aggregateProducts(rows);
-    const brands = aggregateBrands(products, pcMap);
-    brands.sort((a, b) => b.revenue - a.revenue);
-    res.json(brands);
+
+    const currBrands = aggregateBrands(aggregateProducts(currRows), pcMap);
+    const prevBrands = aggregateBrands(aggregateProducts(prevRows), pcMap);
+
+    const prevByKey = {};
+    for (const b of prevBrands) prevByKey[b.product_brand] = b;
+
+    const merged = currBrands.map(c => {
+      const p = prevByKey[c.product_brand] || {};
+      return {
+        ...c,
+        delta_impressions: pctChange(c.impressions, p.impressions || 0),
+        delta_clicks:      pctChange(c.clicks,      p.clicks      || 0),
+        delta_ctr:         pctChange(c.ctr,         p.ctr         || 0),
+        delta_cpc:         pctChange(c.cpc,         p.cpc         || 0),
+        delta_cost:        pctChange(c.cost,        p.cost        || 0),
+        delta_conversions: pctChange(c.conversions, p.conversions || 0),
+        delta_revenue:     pctChange(c.revenue,     p.revenue     || 0),
+        delta_cvr:         pctChange(c.cvr,         p.cvr         || 0),
+        delta_roas:        pctChange(c.roas,        p.roas        || 0),
+      };
+    });
+
+    merged.sort((a, b) => b.revenue - a.revenue);
+    res.json(merged);
   } catch (err) {
     console.error('Shopping/brands-detail:', err.message);
     if (err.message === 'NOT_AUTHENTICATED') return res.status(401).json({ error: 'Not authenticated' });
@@ -370,7 +410,11 @@ router.get('/top-flop', async (req, res) => {
 
     const merged = currRows2.map(c => {
       const q = prevMap[c.key] || null;
-      const delta_revenue = q && q.revenue > 0 ? r2(((c.revenue - q.revenue) / q.revenue) * 100) : null;
+      const prevRevenue = q?.revenue || 0;
+      const prevCost    = q?.cost    || 0;
+      const delta_revenue_eur = q ? r2(c.revenue - prevRevenue) : null;
+      const delta_revenue = q && prevRevenue > 0 ? r2(((c.revenue - prevRevenue) / prevRevenue) * 100) : null;
+      const delta_cost    = q && prevCost    > 0 ? r2(((c.cost    - prevCost)    / prevCost)    * 100) : null;
       const delta_roas    = q && q.roas    > 0 ? r2(((c.roas    - q.roas)    / q.roas)    * 100) : null;
       const delta_conv    = q && q.conversions > 0 ? r2(((c.conversions - q.conversions) / q.conversions) * 100) : null;
       return {
@@ -378,17 +422,22 @@ router.get('/top-flop', async (req, res) => {
         item_id: c.item_id, product_brand: c.product_brand,
         current:  { revenue: c.revenue, roas: c.roas, cvr: c.cvr, conversions: c.conversions, cost: c.cost },
         previous: q ? { revenue: q.revenue, roas: q.roas, cvr: q.cvr, conversions: q.conversions, cost: q.cost } : null,
-        delta_revenue, delta_roas, delta_conv,
+        delta_revenue, delta_revenue_eur, delta_cost, delta_roas, delta_conv,
       };
     });
 
-    // Only keep rows where we have meaningful data in current period
-    const meaningful = merged.filter(m => m.current.revenue > 0 || m.current.cost > 0);
-    const withDelta  = meaningful.filter(m => m.delta_revenue != null);
+    // Soft floor: keep only rows with meaningful € volume on at least one period
+    // (kills the +900% / -100% noise from products doing 5€ → 50€).
+    const MIN_REVENUE = 100;
+    const meaningful = merged.filter(m =>
+      Math.max(m.current.revenue || 0, m.previous?.revenue || 0) >= MIN_REVENUE
+    );
+    const withDelta  = meaningful.filter(m => m.delta_revenue_eur != null);
 
     const lim = Math.min(Number(limit) || 20, 100);
-    const top  = [...withDelta].sort((a, b) => (b.delta_revenue ?? -Infinity) - (a.delta_revenue ?? -Infinity)).slice(0, lim);
-    const flop = [...withDelta].sort((a, b) => (a.delta_revenue ?? Infinity)  - (b.delta_revenue ?? Infinity)).slice(0, lim);
+    // Rank by ABSOLUTE delta (€) — surfaces real movements, not relative noise
+    const top  = [...withDelta].sort((a, b) => (b.delta_revenue_eur ?? -Infinity) - (a.delta_revenue_eur ?? -Infinity)).slice(0, lim);
+    const flop = [...withDelta].sort((a, b) => (a.delta_revenue_eur ?? Infinity)  - (b.delta_revenue_eur ?? Infinity)).slice(0, lim);
 
     res.json({ top, flop, period: { from, to }, compare: { from: compFrom, to: compTo } });
   } catch (err) {
@@ -399,34 +448,50 @@ router.get('/top-flop', async (req, res) => {
 });
 
 // ─── GET /api/shopping/feed-quality ──────────────────────
-// Qualité du flux Merchant Center (issues produits)
+// Liste des produits REFUSÉS par Merchant Center, avec les raisons exactes
+// (description, détail, lien doc) telles que MC les expose, et non plus une
+// classification générique côté serveur.
 router.get('/feed-quality', async (req, res) => {
   if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const { brand = 'ALL', market = 'ALL' } = req.query;
     const items = await getProductStatuses(brand, market);
 
-    const withIssues = items.filter(it => it.issues && it.issues.length > 0);
+    // Refusés uniquement — produits non diffusés sur Shopping
+    const disapproved = items.filter(it => it.status === 'disapproved');
 
-    const summary = { total_issues: 0, image: 0, description: 0, gtin: 0, category: 0, shipping: 0, price: 0, availability: 0, other: 0 };
-    for (const it of withIssues) {
+    // Compteurs par code MC réel (le champ `code` est stable, en anglais, ex.
+    // "image_link_broken"). Permet à l'UI d'afficher des chips de regroupement
+    // qui correspondent à ce qu'on voit dans Merchant Center.
+    const byCode = {};
+    for (const it of disapproved) {
       for (const iss of it.issues) {
-        summary.total_issues++;
-        const k = iss.type.toLowerCase();
-        if (summary[k] != null) summary[k]++;
-        else summary.other++;
+        if (iss.severity !== 'disapproved') continue;
+        const k = iss.code || 'unknown';
+        if (!byCode[k]) byCode[k] = { code: k, description: iss.description, count: 0 };
+        byCode[k].count++;
       }
     }
+    const reasonSummary = Object.values(byCode).sort((a, b) => b.count - a.count);
 
     res.json({
-      summary,
-      products: withIssues.slice(0, 500).map(it => ({
-        item_id:  it.item_id,
-        title:    it.title,
-        brand:    it.brand,
-        status:   it.status,
-        severity: it.status,
-        issues:   it.issues,
+      total_disapproved: disapproved.length,
+      reason_summary:    reasonSummary,
+      products: disapproved.slice(0, 1000).map(it => ({
+        item_id: it.item_id,
+        title:   it.title,
+        brand:   it.brand,
+        // Chaque raison = exactement ce que MC expose dans son UI
+        issues:  it.issues
+          .filter(iss => iss.severity === 'disapproved')
+          .map(iss => ({
+            code:          iss.code,
+            description:   iss.description,
+            detail:        iss.detail,
+            documentation: iss.documentation,
+            attribute:     iss.attribute,
+            resolution:    iss.resolution,
+          })),
       })),
     });
   } catch (err) {
