@@ -134,7 +134,8 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-.claude/worktrees/nervous-liskov/
+# Claude Code (local user settings + worktrees)
+.claude/
 
 # Project-specific
 backend/tokens.json
