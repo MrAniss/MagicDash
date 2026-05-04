@@ -70,9 +70,6 @@ function getAvailableMarkets(brand) {
 const VIEW_TABS = [
   { key: 'dashboard', label: 'Paid Search' },
   { key: 'paid-social', label: 'Paid Social' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'comarket', label: 'Comarket' },
-  { key: 'shopping', label: 'Shopping' },
   { key: 'analytics', label: 'Analytics' },
 ];
 
@@ -231,9 +228,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     <header className="sticky top-0 z-50 bg-white border-b border-border-strong shadow-header">
       <div className="max-w-[1600px] mx-auto px-6 py-3">
         {/* Top row */}
-        <div
-          className={`flex items-center justify-between ${activeView !== 'budget' ? 'mb-3' : ''}`}
-        >
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <img
               src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
@@ -343,9 +338,8 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
           </div>
         </div>
 
-        {/* Bottom row — hidden on views with own controls */}
-        {activeView !== 'budget' && (
-          <div className="flex items-center justify-between gap-4 flex-wrap">
+        {/* Filters row */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
             {/* Brand tabs */}
             <div className="flex items-center gap-2">
               <div className="flex gap-1">
@@ -418,10 +412,9 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
 
             </div>
           </div>
-        )}
 
         {/* Comarket warning banner */}
-        {activeView !== 'budget' && includeComarket && (
+        {includeComarket && (
           <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
             <span>&#9888;</span>
             <span>

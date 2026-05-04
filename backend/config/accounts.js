@@ -1,44 +1,83 @@
-export const MCC_ID = '566-480-6196';
+// Google Ads account configuration. IDs are read from .env so the source
+// tree doesn't expose the customer graph publicly. The market codes and
+// human-readable labels stay here — they're not secret and let us keep a
+// single source of truth for "which markets exist".
+
+import './loadEnv.js';
+
+function readId(envKey) {
+  const v = process.env[envKey];
+  if (!v) {
+    // Soft-fail: missing env var → that account is excluded. Logged once at
+    // startup so the operator knows what's loaded.
+    console.warn(`[accounts] ${envKey} not set — excluding that account.`);
+  }
+  return v || null;
+}
+
+export const MCC_ID = process.env.GOOGLE_ADS_MCC_ID || '';
+
+const COCOONCENTER_MARKETS = [
+  { market: 'FR', label: 'France'          },
+  { market: 'BE', label: 'Belgique'        },
+  { market: 'NL', label: 'Pays-Bas'        },
+  { market: 'DE', label: 'Allemagne'       },
+  { market: 'IT', label: 'Italie'          },
+  { market: 'ES', label: 'Espagne'         },
+  { market: 'UK', label: 'Royaume-Uni'     },
+  { market: 'AT', label: 'Autriche'        },
+  { market: 'PT', label: 'Portugal'        },
+  { market: 'LU', label: 'Luxembourg'      },
+  { market: 'SE', label: 'Suède'           },
+  { market: 'NO', label: 'Norvège'         },
+  { market: 'FI', label: 'Finlande'        },
+  { market: 'PL', label: 'Pologne'         },
+  { market: 'IE', label: 'Irlande'         },
+  { market: 'RO', label: 'Roumanie'        },
+  { market: 'SA', label: 'Arabie Saoudite' },
+  { market: 'CA', label: 'Canada'          },
+  { market: 'AU', label: 'Australie'       },
+  { market: 'US', label: 'États-Unis'      },
+];
+
+function buildCocooncenterAccounts() {
+  return COCOONCENTER_MARKETS
+    .map(({ market, label }) => ({
+      id: readId(`GOOGLE_ADS_ID_COCOONCENTER_${market}`),
+      market,
+      label,
+    }))
+    .filter(a => a.id);
+}
+
+function buildStandaloneAccount(brandKey, market, label) {
+  const id = readId(`GOOGLE_ADS_ID_${brandKey}_${market}`);
+  return id ? [{ id, market, label }] : [];
+}
 
 export const BRANDS = {
   COCOONCENTER: {
     name: 'Cocooncenter',
     mode: 'mcc',
-    accounts: [
-      { id: '432-928-8276', market: 'FR', label: 'France' },
-      { id: '622-722-1825', market: 'BE', label: 'Belgique' },
-      { id: '426-916-4266', market: 'NL', label: 'Pays-Bas' },
-      { id: '791-513-9319', market: 'DE', label: 'Allemagne' },
-      { id: '143-906-5278', market: 'IT', label: 'Italie' },
-      { id: '835-420-9149', market: 'ES', label: 'Espagne' },
-      { id: '684-585-8456', market: 'UK', label: 'Royaume-Uni' },
-      { id: '892-036-9741', market: 'AT', label: 'Autriche' },
-      { id: '185-734-9056', market: 'PT', label: 'Portugal' },
-      { id: '339-119-3668', market: 'LU', label: 'Luxembourg' },
-      { id: '995-360-5444', market: 'SE', label: 'Suède' },
-      { id: '682-321-1943', market: 'NO', label: 'Norvège' },
-      { id: '418-859-4423', market: 'FI', label: 'Finlande' },
-      { id: '629-192-9054', market: 'PL', label: 'Pologne' },
-      { id: '903-581-1386', market: 'IE', label: 'Irlande' },
-      { id: '677-043-2168', market: 'RO', label: 'Roumanie' },
-      { id: '880-717-7535', market: 'SA', label: 'Arabie Saoudite' },
-      { id: '998-980-4415', market: 'CA', label: 'Canada' },
-      { id: '973-987-0903', market: 'AU', label: 'Australie' },
-      { id: '674-997-1705', market: 'US', label: 'États-Unis' },
-    ]
+    accounts: buildCocooncenterAccounts(),
   },
   PASCAL_COSTE: {
     name: 'Pascal Coste Shopping',
     mode: 'standalone',
-    accounts: [
-      { id: '412-763-0025', market: 'FR', label: 'France' },
-    ]
+    accounts: buildStandaloneAccount('PASCAL_COSTE', 'FR', 'France'),
   },
   PARAPHARMACIE_LAFAYETTE: {
     name: 'Parapharmacie Lafayette',
     mode: 'standalone',
-    accounts: [
-      { id: '422-013-5964', market: 'FR', label: 'France' },
-    ]
-  }
+    accounts: buildStandaloneAccount('PARAPHARMACIE_LAFAYETTE', 'FR', 'France'),
+  },
 };
+
+/**
+ * Conversion action ID used for margin / POAS queries on a given
+ * (brand, market). Returns null if not configured — callers should fall
+ * back to revenue-based ROAS instead of margin.
+ */
+export function getMarginConversionActionId(brand, market) {
+  return process.env[`GOOGLE_ADS_MARGIN_CONVERSION_${brand}_${market}`] || null;
+}

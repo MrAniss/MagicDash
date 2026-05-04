@@ -1,25 +1,25 @@
-// Search Console property mapping per brand.
+// Search Console property mapping per brand. Properties live in .env so
+// the source tree doesn't enumerate which domains each brand owns.
+//
 // type: 'url' → full URL with trailing slash; 'domain' → sc-domain: prefix.
+// We infer the type from the env value's prefix so the operator only fills
+// in one variable per brand instead of (property, type) pairs.
+
+import './loadEnv.js';
+
+function inferType(value) {
+  return value.startsWith('sc-domain:') ? 'domain' : 'url';
+}
+
+function buildEntry(envKey, market = 'FR', country = 'fra') {
+  const property = process.env[envKey] || '';
+  return { property, type: inferType(property), market, country };
+}
 
 export const GSC_PROPERTIES = {
-  'Cocooncenter': {
-    property: 'https://www.cocooncenter.com/',
-    type: 'url',
-    market: 'FR',
-    country: 'fra',
-  },
-  'Pascal Coste Shopping': {
-    property: 'sc-domain:pascalcoste-shopping.com',
-    type: 'domain',
-    market: 'FR',
-    country: 'fra',
-  },
-  'Parapharmacie Lafayette': {
-    property: 'sc-domain:parapharmacielafayette.com',
-    type: 'domain',
-    market: 'FR',
-    country: 'fra',
-  },
+  'Cocooncenter':            buildEntry('GSC_PROPERTY_COCOONCENTER'),
+  'Pascal Coste Shopping':   buildEntry('GSC_PROPERTY_PASCAL_COSTE'),
+  'Parapharmacie Lafayette': buildEntry('GSC_PROPERTY_PARAPHARMACIE_LAFAYETTE'),
 };
 
 // Aliases accepted by API param (matches existing brand keys elsewhere).

@@ -35,9 +35,17 @@ function loadFilters() {
   };
 }
 
+const PAID_SEARCH_SUBTABS = [
+  { key: 'overview', label: "Vue d'ensemble" },
+  { key: 'budget',   label: 'Budget' },
+  { key: 'comarket', label: 'Comarket' },
+  { key: 'shopping', label: 'Shopping' },
+];
+
 export default function App() {
   const [filters, setFilters] = useState(loadFilters);
   const [activeView, setActiveView] = useState('dashboard');
+  const [paidSearchTab, setPaidSearchTab] = useState('overview');
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
   }, [filters]);
@@ -86,30 +94,50 @@ export default function App() {
 
         {activeView === 'dashboard' && (
           <>
-            <AccordionSection
-              title="Bilan de la semaine dernière"
-              badge="Insights"
-              isOpenDefault={false}
-            >
-              <WeeklyPerformanceSummary brand={filters.brand} market={filters.market} />
-            </AccordionSection>
+            <div className="flex items-center gap-1 bg-white border border-border rounded-card shadow-sm p-1 w-fit">
+              {PAID_SEARCH_SUBTABS.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setPaidSearchTab(t.key)}
+                  className={`px-4 py-1.5 text-xs font-medium rounded-inner transition-colors ${
+                    paidSearchTab === t.key
+                      ? 'bg-navy text-white'
+                      : 'text-navy-muted hover:text-navy hover:bg-bg-page'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-            <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
-            <CostKpiChart filters={filters} />
-            <GranularityTable filters={filters} />
-            <MarketTable data={markets.data} isLoading={markets.isLoading} />
+            {paidSearchTab === 'overview' && (
+              <>
+                <AccordionSection
+                  title="Bilan de la semaine dernière"
+                  badge="Insights"
+                  isOpenDefault={false}
+                >
+                  <WeeklyPerformanceSummary brand={filters.brand} market={filters.market} />
+                </AccordionSection>
 
-            <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
-              <CampaignDrilldown filters={filters} />
-            </AccordionSection>
+                <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
+                <CostKpiChart filters={filters} />
+                <GranularityTable filters={filters} />
+                <MarketTable data={markets.data} isLoading={markets.isLoading} />
+
+                <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
+                  <CampaignDrilldown filters={filters} />
+                </AccordionSection>
+              </>
+            )}
+
+            {paidSearchTab === 'budget'   && <BudgetPacing filters={filters} />}
+            {paidSearchTab === 'comarket' && <ComarketView filters={filters} />}
+            {paidSearchTab === 'shopping' && <ShoppingView filters={filters} />}
           </>
         )}
 
         {activeView === 'analytics' && <GA4View filters={filters} />}
-
-        {activeView === 'budget' && <BudgetPacing filters={filters} />}
-
-        {activeView === 'comarket' && <ComarketView filters={filters} />}
 
         {activeView === 'shopping' && <ShoppingView filters={filters} />}
 

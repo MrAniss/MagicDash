@@ -226,7 +226,7 @@ router.get('/price-summary', async (req, res) => {
 });
 
 // ─── GET /api/shopping/scoring ────────────────────────────
-// CC FR only — hardcoded to customer 432-928-8276
+// CC FR only — resolves the customer ID via BRANDS.COCOONCENTER (env-driven).
 
 const SCORING_BUCKETS = {
   'TOP_MIDDLE': { label: 'Top/Middle', color: '#00B87A', order: 1 },

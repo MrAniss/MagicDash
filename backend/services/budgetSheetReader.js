@@ -2,7 +2,16 @@ import { google } from 'googleapis';
 import { getOAuth2Client } from '../auth.js';
 import { BUDGET_MARKET_MAP } from '../config/budgetMarketMap.js';
 
-const BUDGET_SHEET_ID = '1UJX7ldlXAhS_e50Hjz7pK99KiBVBUxkyDoWJXuYauro';
+// Read lazily — process.env isn't populated at module-eval time because ES
+// module imports are hoisted above server.js's dotenv.config() call.
+function getBudgetSheetId() {
+  const id = process.env.BUDGET_SHEET_ID;
+  if (!id) {
+    throw new Error('BUDGET_SHEET_ID not set in .env — see .env.example');
+  }
+  return id;
+}
+
 const TAB_NAME = 'Raw_Import';
 
 // Cache: 1 hour TTL
@@ -37,7 +46,7 @@ async function fetchSheetData() {
   const sheets = google.sheets({ version: 'v4', auth });
 
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: BUDGET_SHEET_ID,
+    spreadsheetId: getBudgetSheetId(),
     range: `${TAB_NAME}`,
   });
 
@@ -123,7 +132,7 @@ async function fetchPCSSheetData() {
   const sheets = google.sheets({ version: 'v4', auth });
 
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: BUDGET_SHEET_ID,
+    spreadsheetId: getBudgetSheetId(),
     range: `${PCS_TAB}`,
   });
 

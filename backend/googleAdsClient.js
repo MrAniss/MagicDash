@@ -1,6 +1,6 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import { getOAuth2Client } from './auth.js';
-import { BRANDS, MCC_ID } from './config/accounts.js';
+import { BRANDS, MCC_ID, getMarginConversionActionId } from './config/accounts.js';
 
 // ─── Cache ─────────────────────────────────────────────
 const cache = new Map();
@@ -624,6 +624,7 @@ export async function getScoringData(from, to) {
   const api = getApi();
   const ccFr = BRANDS.COCOONCENTER.accounts.find(a => a.market === 'FR');
   const customer = getCustomer(api, ccFr.id, MCC_ID, refreshToken);
+  const marginActionId = getMarginConversionActionId('COCOONCENTER', 'FR');
 
   // Helper to map campaign name to scoring bucket
   const getBucket = (name) => {
@@ -647,19 +648,23 @@ export async function getScoringData(from, to) {
     WHERE segments.date BETWEEN '${from}' AND '${to}'
     AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'`;
 
-  // 2. Query for real margin by campaign
-  const marginGAQL = `SELECT
+  // 2. Query for real margin by campaign — only if a conversion action is
+  // configured for this market. Without it we still return base metrics, the
+  // POAS column on the frontend will just be 0.
+  const marginGAQL = marginActionId ? `SELECT
       campaign.id,
       segments.conversion_action,
       metrics.all_conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${from}' AND '${to}'
-    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/7098567290'
-    AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'`;
+    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/${marginActionId}'
+    AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'` : null;
 
   const [baseResults, marginResults] = await Promise.all([
     customer.query(baseGAQL).catch(e => { console.error('Base scoring query error:', e?.message || e); return []; }),
-    customer.query(marginGAQL).catch(e => { console.error('Margin scoring query error:', e?.message || e); return []; })
+    marginGAQL
+      ? customer.query(marginGAQL).catch(e => { console.error('Margin scoring query error:', e?.message || e); return []; })
+      : Promise.resolve([]),
   ]);
 
   const byCampaignId = {};

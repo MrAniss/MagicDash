@@ -3,63 +3,81 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getOAuth2Client } from '../auth.js';
+import '../config/loadEnv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = path.join(__dirname, '..', '.cache');
 const CACHE_FILE = path.join(CACHE_DIR, 'mc-cache.json');
 
 // ─── Merchant Center IDs ──────────────────────────────────
-const MC_CONFIG = {
-  COCOONCENTER: [
-    '7284268',    // cocooncenter.com (FR)
-    '134179870',  // cocooncenter.be
-    '279126399',  // cocooncenter.co.uk  (UK + AU, CA, SA, NO, IE via shared domain)
-    '115705933',  // cocooncenter.de
-    '121177476',  // cocooncenter.es
-    '560424120',  // cocooncenter.it
-    '5737145093', // cocooncenter.at
-    '5752364776', // cocooncenter.fi
-    '5747584038', // cocooncenter.ie
-    '5752192866', // cocooncenter.nl
-    '5351916428', // cocooncenter.pl
-    '5751926635', // cocooncenter.pt
-    '5748405752', // cocooncenter.ro
-    '5752364749', // cocooncenter.se
-  ],
-  PASCAL_COSTE:            ['9831411'],
-  PARAPHARMACIE_LAFAYETTE: ['510562869'],
+// IDs are pulled from .env. Markets that share a single MC account (e.g.
+// the .co.uk account serves UK + US/CA/AU/SA/NO/IE) reference the same env
+// key.
+const env = (k) => process.env[k] || null;
+
+// One env var per UNIQUE MC account; structure stays here.
+const MC_ENV_KEYS = {
+  COCOONCENTER: {
+    FR: 'MC_ID_COCOONCENTER_FR',
+    BE: 'MC_ID_COCOONCENTER_BE',
+    UK: 'MC_ID_COCOONCENTER_UK',
+    DE: 'MC_ID_COCOONCENTER_DE',
+    ES: 'MC_ID_COCOONCENTER_ES',
+    IT: 'MC_ID_COCOONCENTER_IT',
+    AT: 'MC_ID_COCOONCENTER_AT',
+    FI: 'MC_ID_COCOONCENTER_FI',
+    IE: 'MC_ID_COCOONCENTER_IE',
+    NL: 'MC_ID_COCOONCENTER_NL',
+    PL: 'MC_ID_COCOONCENTER_PL',
+    PT: 'MC_ID_COCOONCENTER_PT',
+    RO: 'MC_ID_COCOONCENTER_RO',
+    SE: 'MC_ID_COCOONCENTER_SE',
+  },
+  PASCAL_COSTE:            { FR: 'MC_ID_PASCAL_COSTE_FR' },
+  PARAPHARMACIE_LAFAYETTE: { FR: 'MC_ID_PARAPHARMACIE_LAFAYETTE_FR' },
 };
 
+// Flat list of MC accounts per brand — used for "market=ALL" queries that
+// iterate every account. Built from MC_ENV_KEYS so each MC account appears
+// exactly once.
+const MC_CONFIG = Object.fromEntries(
+  Object.entries(MC_ENV_KEYS).map(([brand, mkts]) => [
+    brand,
+    Object.values(mkts).map(env).filter(Boolean),
+  ]),
+);
+
 // market code → { merchantId, countryCode }
-// countryCode = ISO 3166-1 alpha-2 used in MC product IDs (product_view.id) and
+// countryCode = ISO 3166-1 alpha-2 used in MC product IDs and
 // price_competitiveness.country_code. GB is used for the UK market.
+// Markets sharing an MC account (UK group) reference the same env var.
 const MC_MARKET = {
   COCOONCENTER: {
-    FR: { merchantId: '7284268',    countryCode: 'FR' },
-    BE: { merchantId: '134179870',  countryCode: 'BE' },
-    UK: { merchantId: '279126399',  countryCode: 'GB' },
-    US: { merchantId: '279126399',  countryCode: 'US' },
-    CA: { merchantId: '279126399',  countryCode: 'CA' },
-    AU: { merchantId: '279126399',  countryCode: 'AU' },
-    SA: { merchantId: '279126399',  countryCode: 'SA' },
-    NO: { merchantId: '279126399',  countryCode: 'NO' },
-    IE: { merchantId: '279126399',  countryCode: 'IE' },
-    DE: { merchantId: '115705933',  countryCode: 'DE' },
-    ES: { merchantId: '121177476',  countryCode: 'ES' },
-    IT: { merchantId: '560424120',  countryCode: 'IT' },
-    AT: { merchantId: '5737145093', countryCode: 'AT' },
-    FI: { merchantId: '5752364776', countryCode: 'FI' },
-    NL: { merchantId: '5752192866', countryCode: 'NL' },
-    PL: { merchantId: '5351916428', countryCode: 'PL' },
-    PT: { merchantId: '5751926635', countryCode: 'PT' },
-    RO: { merchantId: '5748405752', countryCode: 'RO' },
-    SE: { merchantId: '5752364749', countryCode: 'SE' },
+    FR: { merchantId: env('MC_ID_COCOONCENTER_FR'), countryCode: 'FR' },
+    BE: { merchantId: env('MC_ID_COCOONCENTER_BE'), countryCode: 'BE' },
+    UK: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'GB' },
+    US: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'US' },
+    CA: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'CA' },
+    AU: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'AU' },
+    SA: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'SA' },
+    NO: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'NO' },
+    IE: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'IE' },
+    DE: { merchantId: env('MC_ID_COCOONCENTER_DE'), countryCode: 'DE' },
+    ES: { merchantId: env('MC_ID_COCOONCENTER_ES'), countryCode: 'ES' },
+    IT: { merchantId: env('MC_ID_COCOONCENTER_IT'), countryCode: 'IT' },
+    AT: { merchantId: env('MC_ID_COCOONCENTER_AT'), countryCode: 'AT' },
+    FI: { merchantId: env('MC_ID_COCOONCENTER_FI'), countryCode: 'FI' },
+    NL: { merchantId: env('MC_ID_COCOONCENTER_NL'), countryCode: 'NL' },
+    PL: { merchantId: env('MC_ID_COCOONCENTER_PL'), countryCode: 'PL' },
+    PT: { merchantId: env('MC_ID_COCOONCENTER_PT'), countryCode: 'PT' },
+    RO: { merchantId: env('MC_ID_COCOONCENTER_RO'), countryCode: 'RO' },
+    SE: { merchantId: env('MC_ID_COCOONCENTER_SE'), countryCode: 'SE' },
   },
   PASCAL_COSTE: {
-    FR: { merchantId: '9831411', countryCode: 'FR' },
+    FR: { merchantId: env('MC_ID_PASCAL_COSTE_FR'), countryCode: 'FR' },
   },
   PARAPHARMACIE_LAFAYETTE: {
-    FR: { merchantId: '510562869', countryCode: 'FR' },
+    FR: { merchantId: env('MC_ID_PARAPHARMACIE_LAFAYETTE_FR'), countryCode: 'FR' },
   },
 };
 
