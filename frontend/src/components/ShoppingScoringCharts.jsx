@@ -201,7 +201,7 @@ export default function ShoppingScoringCharts({ brand, market, from, to }) {
   const enabled = brand === 'COCOONCENTER' && market === 'FR';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['shopping-scoring-v3', from, to],
+    queryKey: ['shopping-scoring-v4', from, to],
     queryFn: () => fetchApi('/api/shopping/scoring', { from, to }),
     staleTime: 30 * 60 * 1000,
     enabled,

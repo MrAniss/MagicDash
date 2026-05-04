@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../auth.js';
 import { getShoppingData, getScoringData } from '../googleAdsClient.js';
-import { getPriceMap, getPriceCompetitivenessData, getProductStatuses } from '../services/merchantCenterClient.js';
+import {
+  getPriceMap,
+  getPriceCompetitivenessData,
+  getProductStatuses,
+  getProductLinkMap,
+} from '../services/merchantCenterClient.js';
 import { POAS_BREAKEVEN } from '../config/poasThresholds.js';
 
 import { getComparisonDates, r2, pctChange } from '../dateUtils.js';
@@ -98,14 +103,28 @@ function aggregateBrands(products, pcMap = {}) {
 }
 
 // Enrich products with price map + competitiveness data
-function enrichProducts(products, priceMap, pcMap) {
+function enrichProducts(products, priceMap, pcMap, linkMap = {}) {
   return products.map(p => {
     const pm = priceMap[p.item_id];
     const pc = pcMap[p.item_id] || null;
+    // The PriceCompetitiveness snapshot is the price Google saw when computing
+    // the benchmark — typically the *effective* price (sale price if active).
+    // The catalog priceMap returns the *regular* feed price. When the two
+    // diverge by more than 1 cent, we infer the product is on promo.
+    const regular = pm?.price ?? null;
+    const effective = pc?.our_price ?? regular;
+    const on_promo = regular != null && pc?.our_price != null
+      && Math.abs(regular - pc.our_price) > 0.01
+      && pc.our_price < regular;
     return {
       ...p,
-      price:            pm?.price ?? null,
+      // "Notre Prix" displays the effective (current) price — keeps the
+      // Notre Prix / Marché / Δ% triangle internally consistent.
+      price:            effective,
+      regular_price:    regular,
       price_currency:   pm?.currency ?? null,
+      on_promo,
+      link:             linkMap[p.item_id] ?? null,
       benchmark_price:  pc?.benchmark_price ?? null,
       delta_pct:        pc?.delta_pct ?? null,
       delta_eur:        pc?.delta_eur ?? null,
@@ -127,15 +146,17 @@ router.get('/price-summary', async (req, res) => {
     ]);
     const products = aggregateProducts(rows).filter(p => p.impressions > 0);
 
-    const counts = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
-    const cost   = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
+    const counts  = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
+    const cost    = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
+    const revenue = { COMPETITIVE: 0, ON_PAR: 0, EXPENSIVE: 0, NO_DATA: 0 };
     const expensiveProducts = [];
 
     for (const p of products) {
       const pc = pcMap[p.item_id];
       const status = pc?.status || 'NO_DATA';
-      counts[status] = (counts[status] || 0) + 1;
-      cost[status]   = (cost[status]   || 0) + (p.cost || 0);
+      counts[status]  = (counts[status]  || 0) + 1;
+      cost[status]    = (cost[status]    || 0) + (p.cost    || 0);
+      revenue[status] = (revenue[status] || 0) + (p.revenue || 0);
       if (pc && pc.status === 'EXPENSIVE' && p.revenue > 0) {
         expensiveProducts.push({
           item_id: p.item_id, title: p.title, product_brand: p.product_brand,
@@ -150,7 +171,9 @@ router.get('/price-summary', async (req, res) => {
     const insights = expensiveProducts.slice(0, 10);
 
     const total = products.length;
-    const totalCost = cost.COMPETITIVE + cost.ON_PAR + cost.EXPENSIVE + cost.NO_DATA;
+    const totalCost    = cost.COMPETITIVE    + cost.ON_PAR    + cost.EXPENSIVE    + cost.NO_DATA;
+    const totalRevenue = revenue.COMPETITIVE + revenue.ON_PAR + revenue.EXPENSIVE + revenue.NO_DATA;
+    const roasOf = (k) => cost[k] > 0 ? r2(revenue[k] / cost[k]) : 0;
     res.json({
       total,
       counts,
@@ -159,6 +182,18 @@ router.get('/price-summary', async (req, res) => {
         ON_PAR:      r2(cost.ON_PAR),
         EXPENSIVE:   r2(cost.EXPENSIVE),
         NO_DATA:     r2(cost.NO_DATA),
+      },
+      revenue: {
+        COMPETITIVE: r2(revenue.COMPETITIVE),
+        ON_PAR:      r2(revenue.ON_PAR),
+        EXPENSIVE:   r2(revenue.EXPENSIVE),
+        NO_DATA:     r2(revenue.NO_DATA),
+      },
+      roas: {
+        COMPETITIVE: roasOf('COMPETITIVE'),
+        ON_PAR:      roasOf('ON_PAR'),
+        EXPENSIVE:   roasOf('EXPENSIVE'),
+        NO_DATA:     roasOf('NO_DATA'),
       },
       pct: {
         COMPETITIVE: total > 0 ? r2((counts.COMPETITIVE / total) * 100) : 0,
@@ -172,7 +207,15 @@ router.get('/price-summary', async (req, res) => {
         EXPENSIVE:   totalCost > 0 ? r2((cost.EXPENSIVE   / totalCost) * 100) : 0,
         NO_DATA:     totalCost > 0 ? r2((cost.NO_DATA     / totalCost) * 100) : 0,
       },
-      total_cost: r2(totalCost),
+      revenue_pct: {
+        COMPETITIVE: totalRevenue > 0 ? r2((revenue.COMPETITIVE / totalRevenue) * 100) : 0,
+        ON_PAR:      totalRevenue > 0 ? r2((revenue.ON_PAR      / totalRevenue) * 100) : 0,
+        EXPENSIVE:   totalRevenue > 0 ? r2((revenue.EXPENSIVE   / totalRevenue) * 100) : 0,
+        NO_DATA:     totalRevenue > 0 ? r2((revenue.NO_DATA     / totalRevenue) * 100) : 0,
+      },
+      total_cost:    r2(totalCost),
+      total_revenue: r2(totalRevenue),
+      total_roas:    totalCost > 0 ? r2(totalRevenue / totalCost) : 0,
       insights,
     });
   } catch (err) {
@@ -318,12 +361,22 @@ router.get('/products-by-brand', async (req, res) => {
     if (!from || !to)     return res.status(400).json({ error: 'Missing from/to' });
     if (!product_brand)   return res.status(400).json({ error: 'Missing product_brand' });
 
-    const [rows, priceMap, pcMap] = await Promise.all([
+    // linkMap can be slow on the very first cold fetch (products.list paginates
+    // across all sub-accounts). Soft 5s timeout — if the cache is cold, return
+    // products without URLs and let the warmer populate the cache in the
+    // background for the next request.
+    const linkMapWithTimeout = Promise.race([
+      getProductLinkMap(brand, market),
+      new Promise(resolve => setTimeout(() => resolve({}), 5000)),
+    ]).catch(() => ({}));
+
+    const [rows, priceMap, pcMap, linkMap] = await Promise.all([
       getShoppingData(brand, market, from, to),
       getPriceMap(brand, market),
       getPriceCompetitivenessData(brand, market),
+      linkMapWithTimeout,
     ]);
-    const products = enrichProducts(aggregateProducts(rows), priceMap, pcMap)
+    const products = enrichProducts(aggregateProducts(rows), priceMap, pcMap, linkMap)
       .filter(p => (p.product_brand || '(Sans marque)') === product_brand);
     products.sort((a, b) => b.revenue - a.revenue);
     res.json(products.slice(0, 500));

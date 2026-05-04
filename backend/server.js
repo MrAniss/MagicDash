@@ -21,6 +21,8 @@ import ga4Router from './routes/ga4.js';
 import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
 import reportsRouter from './routes/reports.js';
+import paidSocialRouter from './routes/paidSocial.js';
+import { clearMetaCache } from './metaAdsClient.js';
 import { clearGscCache } from './searchConsoleClient.js';
 
 import { getComparisonDates, fmtDate, daysBetween, r2, pctChange, getISOWeek } from './dateUtils.js';
@@ -48,6 +50,7 @@ app.use('/api/ga4', ga4Router);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/paid-social', paidSocialRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
@@ -61,6 +64,7 @@ app.post('/api/cache/clear', (_req, res) => {
   clearGA4Cache();
   clearMcCache();
   clearGscCache();
+  clearMetaCache();
   ytdCache.clear();
   ga4YtdCache.clear();
   res.json({ ok: true });
@@ -234,24 +238,28 @@ app.get('/api/campaigns', async (req, res) => {
       const prev = aggregateMetrics(prevByType[typeName] || []);
       return {
         type: typeName,
-        spend: cur.spend,
-        spend_pct: totalSpend > 0 ? Math.round((cur.spend / totalSpend) * 10000) / 100 : 0,
-        revenue: cur.revenue,
-        roas: cur.roas,
-        conversions: cur.conversions,
-        cvr: cur.cvr,
+        impressions: cur.impressions,
         clicks: cur.clicks,
         ctr: cur.ctr,
+        spend: cur.spend,
+        spend_pct: totalSpend > 0 ? Math.round((cur.spend / totalSpend) * 10000) / 100 : 0,
+        cpc: cur.cpc,
+        conversions: cur.conversions,
+        revenue: cur.revenue,
+        cvr: cur.cvr,
         aov: cur.aov,
-        delta_roas: pctChange(cur.roas, prev.roas),
-        delta_spend: pctChange(cur.spend, prev.spend),
-        delta_aov: pctChange(cur.aov, prev.aov),
-        delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
-        delta_revenue: pctChange(cur.revenue, prev.revenue),
-        delta_cvr: pctChange(cur.cvr, prev.cvr),
+        roas: cur.roas,
+        delta_impressions: pctChange(cur.impressions, prev.impressions),
         delta_clicks: pctChange(cur.clicks, prev.clicks),
         delta_ctr: pctChange(cur.ctr, prev.ctr),
+        delta_spend: pctChange(cur.spend, prev.spend),
+        delta_cpc: pctChange(cur.cpc, prev.cpc),
         delta_conversions: pctChange(cur.conversions, prev.conversions),
+        delta_revenue: pctChange(cur.revenue, prev.revenue),
+        delta_cvr: pctChange(cur.cvr, prev.cvr),
+        delta_aov: pctChange(cur.aov, prev.aov),
+        delta_roas: pctChange(cur.roas, prev.roas),
+        delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
       };
     });
 

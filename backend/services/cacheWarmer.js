@@ -9,6 +9,7 @@ import {
   getPriceCompetitivenessData,
   getProductStatuses,
   getSalePriceMap,
+  getProductLinkMap,
 } from './merchantCenterClient.js';
 import { isAuthenticated } from '../auth.js';
 
@@ -25,12 +26,13 @@ const REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h
 
 async function warmOne({ brand, market }) {
   const t0 = Date.now();
-  // Run all 4 MC fetches concurrently per (brand, market)
+  // Run all 5 MC fetches concurrently per (brand, market)
   await Promise.all([
     getPriceMap(brand, market).catch(() => null),
     getPriceCompetitivenessData(brand, market).catch(() => null),
     getProductStatuses(brand, market).catch(() => null),
     getSalePriceMap(brand, market).catch(() => null),
+    getProductLinkMap(brand, market).catch(() => null),
   ]);
   console.log(`MC warm [${brand}/${market}]: done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }

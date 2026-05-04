@@ -9,8 +9,10 @@ import CampaignDrilldown from './components/CampaignDrilldown';
 import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
 import ShoppingView from './components/ShoppingView';
+import PaidSocialView from './components/PaidSocialView';
 import WeeklyPerformanceSummary from './components/WeeklyPerformanceSummary';
 import AccordionSection from './components/AccordionSection';
+import TopProgressBar from './components/TopProgressBar';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { getPresetRange } from './utils/dateHelpers';
 
@@ -47,6 +49,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg-page flex flex-col">
+      <TopProgressBar />
       <Header
         filters={filters}
         onFiltersChange={setFilters}
@@ -109,6 +112,8 @@ export default function App() {
         {activeView === 'comarket' && <ComarketView filters={filters} />}
 
         {activeView === 'shopping' && <ShoppingView filters={filters} />}
+
+        {activeView === 'paid-social' && <PaidSocialView filters={filters} />}
       </main>
 
       <footer className="mt-auto py-5 text-center border-t border-border">

@@ -31,6 +31,15 @@ export default {
         'card': '0 1px 4px rgba(26, 46, 74, 0.06)',
         'header': '0 2px 8px rgba(26, 46, 74, 0.06)',
       },
+      keyframes: {
+        'progress-shimmer': {
+          '0%':   { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(400%)' },
+        },
+      },
+      animation: {
+        'progress-shimmer': 'progress-shimmer 1.4s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

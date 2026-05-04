@@ -615,7 +615,7 @@ const scoringCache = new Map();
 const SCORING_CACHE_TTL = 30 * 60 * 1000;
 
 export async function getScoringData(from, to) {
-  const cacheKey = `scoring_v2|${from}|${to}`;
+  const cacheKey = `scoring_v3|${from}|${to}`;
   const entry = scoringCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < SCORING_CACHE_TTL) return entry.data;
   scoringCache.delete(cacheKey);
@@ -654,7 +654,7 @@ export async function getScoringData(from, to) {
       metrics.all_conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${from}' AND '${to}'
-    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/7039093913'
+    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/7098567290'
     AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'`;
 
   const [baseResults, marginResults] = await Promise.all([

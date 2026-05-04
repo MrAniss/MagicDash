@@ -104,6 +104,7 @@ const priceCache  = new Map();
 const pcCache     = new Map();
 const statusCache = new Map(); // productstatuses (issues + aggregated_destination_status)
 const promoCache  = new Map(); // sale_price info from ProductView
+const linkCache   = new Map(); // product page URL from products.list
 
 // In-flight deduplication: concurrent callers share the same pending Promise
 // instead of each firing a redundant MC API request (prevents cache stampede).
@@ -111,17 +112,20 @@ const priceInFlight  = new Map();
 const pcInFlight     = new Map();
 const statusInFlight = new Map();
 const promoInFlight  = new Map();
+const linkInFlight   = new Map();
 
-const PRICE_CACHE_TTL  = 60 * 60 * 1000;     // 1h
-const PC_CACHE_TTL     = 3 * 60 * 60 * 1000; // 3h
-const STATUS_CACHE_TTL = 60 * 60 * 1000;     // 1h
-const PROMO_CACHE_TTL  = 60 * 60 * 1000;     // 1h
+const PRICE_CACHE_TTL  = 60 * 60 * 1000;          // 1h
+const PC_CACHE_TTL     = 3 * 60 * 60 * 1000;      // 3h
+const STATUS_CACHE_TTL = 60 * 60 * 1000;          // 1h
+const PROMO_CACHE_TTL  = 60 * 60 * 1000;          // 1h
+const LINK_CACHE_TTL   = 7 * 24 * 60 * 60 * 1000; // 7d — URLs are stable
 
 export function clearMcCache() {
   priceCache.clear();
   pcCache.clear();
   statusCache.clear();
   promoCache.clear();
+  linkCache.clear();
   saveCacheToDisk(); // wipe the persisted snapshot too
 }
 
@@ -156,7 +160,17 @@ export function loadCacheFromDisk() {
     const pc = deserializeCache(snap.pcCache,     pcCache,     PC_CACHE_TTL);
     const st = deserializeCache(snap.statusCache, statusCache, STATUS_CACHE_TTL);
     const pr = deserializeCache(snap.promoCache,  promoCache,  PROMO_CACHE_TTL);
-    console.log(`MC cache: loaded from disk — price=${p}, pc=${pc}, status=${st}, promo=${pr}`);
+    const lk = deserializeCache(snap.linkCache,   linkCache,   LINK_CACHE_TTL);
+    // Drop empty linkCache entries — they're poisoned cache from a prior failed
+    // fetch and would block live data for the full 7-day TTL otherwise.
+    let lkPruned = 0;
+    for (const [k, v] of linkCache.entries()) {
+      if (!v?.links || Object.keys(v.links).length === 0) {
+        linkCache.delete(k);
+        lkPruned++;
+      }
+    }
+    console.log(`MC cache: loaded from disk — price=${p}, pc=${pc}, status=${st}, promo=${pr}, link=${lk}${lkPruned ? ` (${lkPruned} empty pruned)` : ''}`);
   } catch (e) {
     console.warn('MC cache: failed to load from disk —', e?.message);
   }
@@ -175,6 +189,7 @@ export function saveCacheToDisk() {
         pcCache:     serializeCache(pcCache),
         statusCache: serializeCache(statusCache),
         promoCache:  serializeCache(promoCache),
+        linkCache:   serializeCache(linkCache),
       };
       fs.writeFileSync(CACHE_FILE, JSON.stringify(snap));
     } catch (e) {
@@ -651,5 +666,95 @@ export async function getSalePriceMap(brand, market = 'ALL') {
   })();
 
   promoInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+// ─── Product page URLs via products.list ──────────────────
+// product_view (reporting) does not expose `link`, so we use the v2.1 Content
+// products.list endpoint. Cached aggressively (7d) — URLs change rarely.
+async function fetchProductLinksForMerchant(merchantId, countryCode = null) {
+  const cacheKey = `${merchantId}::${countryCode || 'ALL'}`;
+  const cached = linkCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < LINK_CACHE_TTL) return cached.links;
+
+  const auth    = getOAuth2Client();
+  const content = google.content({ version: 'v2.1', auth });
+
+  const links = {};
+  let pageToken;
+  let pages = 0;
+  let totalRows = 0;
+
+  do {
+    const params = { merchantId, maxResults: 250 };
+    if (pageToken) params.pageToken = pageToken;
+
+    const res = await content.products.list(params).catch(e => {
+      console.error(`MC products.list ${merchantId}:`, e?.message || e);
+      return { data: { resources: [] } };
+    });
+
+    for (const prod of (res.data.resources || [])) {
+      totalRows++;
+      if (!prod.link) continue;
+
+      // Product id format: "online:fr:FR:88069" — same shape as ProductView.id.
+      // Use offerId when populated, otherwise extract from the trailing segment
+      // (the v2.1 API has been intermittently dropping offerId in some responses).
+      const idParts = (prod.id || '').split(':');
+      const offerId = prod.offerId || idParts.slice(3).join(':');
+      if (!offerId) continue;
+
+      // Filter by country, accepting custom feed labels like "FR_NEW".
+      if (countryCode) {
+        if (baseCountry(idParts[2]) !== countryCode) continue;
+      }
+
+      // Prefer online channel when both online + local exist for same offer
+      const existing = links[offerId];
+      const isOnline = (prod.id || '').startsWith('online:');
+      if (existing && !isOnline) continue;
+
+      links[offerId] = prod.link;
+    }
+
+    pageToken = res.data.nextPageToken;
+    pages++;
+  } while (pageToken && pages < 1000);
+
+  const matched = Object.keys(links).length;
+  console.log(`MC product links ${merchantId} country=${countryCode || 'ALL'}: ${totalRows} rows, ${matched} URLs matched`);
+  // Only cache non-empty results — avoids poisoning the 7-day cache if the
+  // first fetch returned empty (auth race, transient API error, etc.).
+  if (matched > 0) {
+    linkCache.set(cacheKey, { links, ts: Date.now() });
+    saveCacheToDisk();
+  } else {
+    console.warn(`MC product links ${merchantId}: 0 URLs — NOT caching, will retry on next request`);
+  }
+  return links;
+}
+
+export async function getProductLinkMap(brand, market = 'ALL') {
+  const cacheKey = `${brand}::${market}`;
+  if (linkInFlight.has(cacheKey)) return linkInFlight.get(cacheKey);
+
+  const promise = (async () => {
+    try {
+      const targets = getMcTargets(brand, market);
+      if (!targets.length) return {};
+      const maps = await Promise.all(
+        targets.map(({ merchantId, countryCode }) => fetchProductLinksForMerchant(merchantId, countryCode))
+      );
+      return Object.assign({}, ...maps);
+    } catch (e) {
+      console.error('getProductLinkMap error:', e?.message);
+      return {};
+    } finally {
+      linkInFlight.delete(cacheKey);
+    }
+  })();
+
+  linkInFlight.set(cacheKey, promise);
   return promise;
 }

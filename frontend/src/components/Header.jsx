@@ -69,6 +69,7 @@ function getAvailableMarkets(brand) {
 
 const VIEW_TABS = [
   { key: 'dashboard', label: 'Paid Search' },
+  { key: 'paid-social', label: 'Paid Social' },
   { key: 'budget', label: 'Budget' },
   { key: 'comarket', label: 'Comarket' },
   { key: 'shopping', label: 'Shopping' },

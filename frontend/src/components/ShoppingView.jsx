@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  LabelList,
+} from 'recharts';
 import { fEur, fNum, fROAS, fPct } from '../utils/formatters';
 import { fetchApi } from '../utils/api';
 import { downloadCsv, copyTsv } from '../utils/exportTable';
@@ -160,24 +171,65 @@ function PricePie({ title, data, totalLabel, totalValue, valueFormatter }) {
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {data.map((item) => (
-            <div key={item.key} className="flex items-center gap-1.5">
+            <div key={item.key} className="flex items-center gap-1 whitespace-nowrap">
               <span
-                className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                className="w-2 h-2 rounded-sm flex-shrink-0"
                 style={{ background: item.color }}
               />
-              <span className="text-[11px] text-navy-muted truncate">{item.label}</span>
-              <span className="text-[11px] font-semibold text-navy tabular-nums">
+              <span className="text-[9px] text-navy-muted truncate">{item.label}</span>
+              <span className="text-[9px] font-semibold text-navy tabular-nums">
                 {valueFormatter(item.value)}
               </span>
-              <span className="text-[10px] text-navy-muted/60 tabular-nums">
+              <span className="text-[8px] text-navy-muted/60 tabular-nums">
                 ({fPct(item.pct)})
               </span>
             </div>
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RoasBar({ title, data, totalLabel, totalValue }) {
+  // Sort descending so the strongest ROAS sits on top — easy visual ranking.
+  const sorted = [...data].filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  return (
+    <div className="bg-white p-4 rounded-card border border-border shadow-sm">
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-[10px] font-bold text-navy-muted uppercase tracking-widest">{title}</p>
+        <p className="text-[10px] font-semibold text-navy-muted/70">
+          {totalLabel}: <span className="text-navy">{fROASx(totalValue)}</span>
+        </p>
+      </div>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={sorted} layout="vertical" margin={{ top: 4, right: 32, left: 0, bottom: 0 }}>
+          <XAxis
+            type="number"
+            domain={[0, 'auto']}
+            tick={{ fontSize: 9 }}
+            tickFormatter={(v) => v + '×'}
+          />
+          <YAxis type="category" dataKey="label" tick={{ fontSize: 9 }} width={68} />
+          <Tooltip
+            formatter={(v) => [fROASx(v), 'ROAS']}
+            contentStyle={{ fontSize: 10, borderRadius: 6, border: '1px solid #E2E6EF' }}
+          />
+          <Bar dataKey="value" radius={[3, 3, 3, 3]} isAnimationActive={false}>
+            {sorted.map((entry) => (
+              <Cell key={entry.key} fill={entry.color} />
+            ))}
+            <LabelList
+              dataKey="value"
+              position="right"
+              formatter={(v) => fROASx(v)}
+              style={{ fontSize: 9, fill: '#334155' }}
+            />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -190,9 +242,10 @@ function PriceScoringPies({ brand, market, from, to }) {
 
   if (isLoading)
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <div className="h-44 bg-white rounded-card border border-border animate-pulse" />
-        <div className="h-44 bg-white rounded-card border border-border animate-pulse" />
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-44 bg-white rounded-card border border-border animate-pulse" />
+        ))}
       </div>
     );
 
@@ -205,11 +258,13 @@ function PriceScoringPies({ brand, market, from, to }) {
       pct: pctMap?.[key] || 0,
     }));
 
-  const productSeries = buildSeries(data?.counts, data?.pct);
-  const costSeries    = buildSeries(data?.cost,   data?.cost_pct);
+  const productSeries = buildSeries(data?.counts,  data?.pct);
+  const costSeries    = buildSeries(data?.cost,    data?.cost_pct);
+  const revenueSeries = buildSeries(data?.revenue, data?.revenue_pct);
+  const roasSeries    = buildSeries(data?.roas,    data?.revenue_pct); // pct = revenue weight, contextual
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
       <PricePie
         title="Répartition des produits par scoring prix"
         data={productSeries}
@@ -223,6 +278,19 @@ function PriceScoringPies({ brand, market, from, to }) {
         totalLabel="Coût"
         totalValue={data?.total_cost || 0}
         valueFormatter={(v) => fEur(v)}
+      />
+      <PricePie
+        title="Revenue par scoring prix"
+        data={revenueSeries}
+        totalLabel="Revenue"
+        totalValue={data?.total_revenue || 0}
+        valueFormatter={(v) => fEur(v)}
+      />
+      <RoasBar
+        title="ROAS par scoring prix"
+        data={roasSeries}
+        totalLabel="ROAS global"
+        totalValue={data?.total_roas || 0}
       />
     </div>
   );
@@ -419,11 +487,43 @@ function BrandsSection({ brand, market, from, to }) {
       key: 'title',
       label: 'Produit',
       align: 'left',
-      render: (r) => (
-        <div className="max-w-[300px] truncate font-medium" title={r.title}>
-          {r.title || r.item_id}
-        </div>
-      ),
+      render: (r) => {
+        const label = r.title || r.item_id;
+        return (
+          <div className="flex items-center gap-1.5 max-w-[320px]">
+            <span className="truncate font-medium text-navy" title={r.title}>
+              {label}
+            </span>
+            {r.link && (
+              <a
+                href={r.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Ouvrir la fiche produit"
+                aria-label="Ouvrir la fiche produit"
+                onClick={(e) => e.stopPropagation()}
+                className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded border border-border text-navy-muted hover:text-mint-dark hover:border-mint-dark transition-colors"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M14 3h7v7" />
+                  <path d="M10 14L21 3" />
+                  <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                </svg>
+              </a>
+            )}
+          </div>
+        );
+      },
     },
     { key: 'impressions', label: 'Impr.', align: 'right', render: (r) => fNum(r.impressions) },
     { key: 'clicks', label: 'Clics', align: 'right', render: (r) => fNum(r.clicks) },
@@ -445,7 +545,27 @@ function BrandsSection({ brand, market, from, to }) {
       key: 'price',
       label: 'Notre Prix',
       align: 'right',
-      render: (r) => (r.price != null ? fEur(r.price) : '—'),
+      render: (r) =>
+        r.price == null ? (
+          '—'
+        ) : (
+          <span className="inline-flex items-center gap-1.5 justify-end">
+            {r.on_promo && (
+              <span
+                title={r.regular_price != null ? `Prix régulier : ${fEur(r.regular_price)}` : 'En promo'}
+                className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#FFF1D6] text-[#B45309] border border-[#B45309]/20 uppercase tracking-wider"
+              >
+                Promo
+              </span>
+            )}
+            <span>{fEur(r.price)}</span>
+            {r.on_promo && r.regular_price != null && (
+              <span className="text-[10px] text-navy-muted line-through">
+                {fEur(r.regular_price)}
+              </span>
+            )}
+          </span>
+        ),
     },
     {
       key: 'benchmark_price',
