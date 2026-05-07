@@ -1,44 +1,39 @@
 import { useQuery } from '@tanstack/react-query';
-import { useComarket } from '../contexts/ComarketContext';
 import { fetchApi } from '../utils/api';
 
 export function useKpis({ brand, market, from, to, compareTo, dataSource = 'ads' }) {
-  const { includeComarket } = useComarket();
   return useQuery({
-    queryKey: ['kpis', brand, market, from, to, compareTo, includeComarket, dataSource],
+    queryKey: ['kpis', brand, market, from, to, compareTo, dataSource],
     queryFn: () =>
-      fetchApi('/api/kpis', { brand, market, from, to, compareTo, includeComarket, dataSource }),
+      fetchApi('/api/kpis', { brand, market, from, to, compareTo, dataSource }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useMarkets({ brand, from, to, compareTo, dataSource = 'ads' }) {
-  const { includeComarket } = useComarket();
   return useQuery({
-    queryKey: ['markets', brand, from, to, compareTo, includeComarket, dataSource],
+    queryKey: ['markets', brand, from, to, compareTo, dataSource],
     queryFn: () =>
-      fetchApi('/api/markets', { brand, from, to, compareTo, includeComarket, dataSource }),
+      fetchApi('/api/markets', { brand, from, to, compareTo, dataSource }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useCampaigns({ brand, market, from, to, type, compareTo, dataSource = 'ads' }) {
-  const { includeComarket } = useComarket();
   return useQuery({
-    queryKey: ['campaigns', brand, market, from, to, type, compareTo, includeComarket, dataSource],
+    queryKey: ['campaigns', brand, market, from, to, type, compareTo, dataSource],
     queryFn: () =>
-      fetchApi('/api/campaigns', { brand, market, from, to, type, compareTo, includeComarket, dataSource }),
+      fetchApi('/api/campaigns', { brand, market, from, to, type, compareTo, dataSource }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useGranularity({ brand, market, from, to, compareTo, granularity, dataSource = 'ads' }) {
-  const { includeComarket } = useComarket();
   return useQuery({
-    queryKey: ['granularity', brand, market, from, to, compareTo, granularity, includeComarket, dataSource],
+    queryKey: ['granularity', brand, market, from, to, compareTo, granularity, dataSource],
     queryFn: () =>
       fetchApi('/api/granularity', {
         brand,
@@ -47,18 +42,8 @@ export function useGranularity({ brand, market, from, to, compareTo, granularity
         to,
         compareTo,
         granularity,
-        includeComarket,
         dataSource,
       }),
-    enabled: !!from && !!to,
-    placeholderData: (prev) => prev,
-  });
-}
-
-export function useComarketData({ from, to, compareTo, partnerBrand }) {
-  return useQuery({
-    queryKey: ['comarket', from, to, compareTo, partnerBrand],
-    queryFn: () => fetchApi('/api/comarket', { from, to, compareTo, partnerBrand }),
     enabled: !!from && !!to,
     placeholderData: (prev) => prev,
   });
@@ -68,25 +53,15 @@ export function useTrendYtd({
   brand,
   market,
   granularity,
-  includeComarket: includeComarketOverride,
-  onlyComarket,
-  partnerBrand,
   dataSource = 'ads',
 }) {
-  const { includeComarket: globalIncludeComarket } = useComarket();
-  const includeComarket =
-    includeComarketOverride !== undefined ? includeComarketOverride : globalIncludeComarket;
-
   return useQuery({
-    queryKey: ['trendYtd', brand, market, granularity, includeComarket, onlyComarket, partnerBrand, dataSource],
+    queryKey: ['trendYtd', brand, market, granularity, dataSource],
     queryFn: () =>
       fetchApi('/api/trend/ytd', {
         brand,
         market,
         granularity,
-        includeComarket,
-        onlyComarket,
-        partnerBrand,
         dataSource,
       }),
     staleTime: 60 * 60 * 1000,

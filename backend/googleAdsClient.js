@@ -58,11 +58,8 @@ export function getCustomer(api, customerId, loginCustomerId, refreshToken) {
 
 // ─── GAQL builder ──────────────────────────────────────
 
-function buildGAQL(dateFrom, dateTo, includeComarket) {
-  let where = `segments.date BETWEEN '${dateFrom}' AND '${dateTo}'`;
-  if (!includeComarket) {
-    where += ` AND campaign.name NOT LIKE '%comarket%' AND campaign.name NOT LIKE '%Comarket%' AND campaign.name NOT LIKE '%COMARKET%'`;
-  }
+function buildGAQL(dateFrom, dateTo) {
+  const where = `segments.date BETWEEN '${dateFrom}' AND '${dateTo}'`;
 
   return `
     SELECT
@@ -168,7 +165,6 @@ function normalizeRow(row, brand, brandLabel, market) {
     searchBudgetLostImpressionShare: parsePct(row.metrics?.search_budget_lost_impression_share),
     absoluteTopImpressionPercentage: absTop,
     topImpressionPercentage: parsePct(row.metrics?.top_impression_percentage),
-    comarket: campaignName.toLowerCase().includes('comarket'),
   };
 }
 
@@ -180,8 +176,8 @@ async function queryAccount(api, accountId, loginCustomerId, gaql, refreshToken,
   return results.map(row => normalizeRow(row, brand, brandLabel, market));
 }
 
-async function queryAllMccMultiMarket(api, refreshToken, dateFrom, dateTo, includeComarket) {
-  const gaql = buildGAQL(dateFrom, dateTo, includeComarket);
+async function queryAllMccMultiMarket(api, refreshToken, dateFrom, dateTo) {
+  const gaql = buildGAQL(dateFrom, dateTo);
   const accounts = BRANDS.BRAND_A.accounts;
 
   const results = await Promise.all(
@@ -201,8 +197,8 @@ function findBrandKey(accountDef) {
   return Object.keys(BRANDS).find(k => BRANDS[k] === accountDef);
 }
 
-async function queryStandaloneAccount(api, refreshToken, accountDef, dateFrom, dateTo, includeComarket) {
-  const gaql = buildGAQL(dateFrom, dateTo, includeComarket);
+async function queryStandaloneAccount(api, refreshToken, accountDef, dateFrom, dateTo) {
+  const gaql = buildGAQL(dateFrom, dateTo);
   const acc = accountDef.accounts[0];
   return queryAccount(api, acc.id, acc.id, gaql, refreshToken, findBrandKey(accountDef), accountDef.name, acc.market)
     .catch(err => {
@@ -213,9 +209,9 @@ async function queryStandaloneAccount(api, refreshToken, accountDef, dateFrom, d
 
 // ─── Public API (same signatures as sheetsReader) ──────
 
-export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaignType, includeComarket = false }) {
-  if (isDemoMode()) return __demoGoogleAds.getRows({ brand, market, from, to, campaignType, includeComarket });
-  const cacheKey = ['rows', brand, from, to, String(includeComarket)].join('|');
+export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaignType }) {
+  if (isDemoMode()) return __demoGoogleAds.getRows({ brand, market, from, to, campaignType });
+  const cacheKey = ['rows', brand, from, to].join('|');
   let allRows = getFromCache(cacheKey);
 
   if (!allRows) {
@@ -225,16 +221,16 @@ export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaig
     const promises = [];
 
     if (brand === 'ALL' || brand === 'BRAND_A') {
-      promises.push(queryAllMccMultiMarket(api, refreshToken, from, to, includeComarket));
+      promises.push(queryAllMccMultiMarket(api, refreshToken, from, to));
     }
     if (brand === 'ALL' || brand === 'BRAND_B') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_B, from, to, includeComarket));
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_B, from, to));
     }
     if (brand === 'ALL' || brand === 'BRAND_C') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_C, from, to, includeComarket));
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_C, from, to));
     }
     if (brand === 'ALL' || brand === 'BRAND_D') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_D, from, to, includeComarket));
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_D, from, to));
     }
 
     const results = await Promise.all(promises);
@@ -765,19 +761,6 @@ for (const r of marginResults) {
 export function clearScoringCache() {
   if (isDemoMode()) return __demoGoogleAds.clearScoringCache();
   scoringCache.clear();
-}
-
-export async function getComarketRows({ from, to }) {
-  if (isDemoMode()) return __demoGoogleAds.getComarketRows({ from, to });
-  const refreshToken = getRefreshToken();
-  const api = getApi();
-
-  // Query FR Brand Alpha with comarket included (override GAQL filter)
-  const gaql = buildGAQL(from, to, true);
-  const frAccount = BRANDS.BRAND_A.accounts.find(a => a.market === 'FR');
-  const rows = await queryAccount(api, frAccount.id, MCC_ID, gaql, refreshToken, 'BRAND_A', 'Brand Alpha', 'FR');
-
-  return rows.filter(r => r.comarket);
 }
 
 // ─── Competition data ───────────────────────────────────

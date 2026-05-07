@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStatus } from '../hooks/useAdsData';
 import { useAuth } from '../contexts/AuthContext';
-import { useComarket } from '../contexts/ComarketContext';
 import { getPresetRange } from '../utils/dateHelpers';
 import { API_URL, authFetch } from '../utils/api';
 import { FlagIcon, marketName } from '../utils/flags';
@@ -174,7 +173,6 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
   const { data: authData } = useAuthStatus();
   const authenticated = authData?.authenticated;
   const { user, logout } = useAuth();
-  const { includeComarket, setIncludeComarket } = useComarket();
   const queryClient = useQueryClient();
   const [refreshState, setRefreshState] = useState('idle'); // idle | loading | success
   const [rebootState, setRebootState] = useState('idle'); // idle | loading | success
@@ -425,27 +423,8 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
                 ))}
               </div>
 
-              {/* Comarket toggle */}
-              <button
-                onClick={() => setIncludeComarket(!includeComarket)}
-                className={`ml-2 px-2.5 py-1 text-xs font-medium rounded-inner border transition-colors ${includeComarket ? 'bg-warning-bg border-warning text-warning' : 'border-border text-navy-muted hover:text-navy hover:border-navy-muted'}`}
-              >
-                {includeComarket ? 'CM ON' : 'CM OFF'}
-              </button>
-
             </div>
           </div>
-
-        {/* Comarket warning banner */}
-        {includeComarket && (
-          <div className="mt-2 bg-warning-bg border border-warning rounded-inner px-3 py-1.5 text-xs text-warning flex items-center gap-2">
-            <span>&#9888;</span>
-            <span>
-              <strong>Comarket inclus</strong> — Les chiffres incluent les campagnes co-financees
-              par les partenaires.
-            </span>
-          </div>
-        )}
       </div>
     </header>
   );

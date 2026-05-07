@@ -9,7 +9,7 @@ import express from 'express';
 import cors from 'cors';
 import { authRouter, isAuthenticated } from './auth.js';
 import { userAuthRouter, requireUser } from './userAuth.js';
-import { getRows, getComarketRows, clearCache, clearScoringCache } from './googleAdsClient.js';
+import { getRows, clearCache, clearScoringCache } from './googleAdsClient.js';
 import { generateRecommendations } from './services/recommendationEngine.js';
 import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
@@ -120,15 +120,14 @@ function aggregateGA4RowList(rows) {
 // ─── KPIs ──────────────────────────────────────────────
 app.get('/api/kpis', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', includeComarket, dataSource = 'ads' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarket = includeComarket === 'true';
-    const currentRows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    const currentRows = await getRows({ brand, market, from, to });
     let current = aggregateMetrics(currentRows);
 
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, includeComarket: comarket });
+    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo });
     let previous = aggregateMetrics(prevRows);
 
     if (dataSource === 'ga4') {
@@ -163,16 +162,15 @@ app.get('/api/kpis', async (req, res) => {
 // ─── Trend ─────────────────────────────────────────────
 app.get('/api/trend', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity, includeComarket } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarket = includeComarket === 'true';
     const days = daysBetween(from, to);
     const gran = granularity || (days <= 90 ? 'day' : 'week');
 
-    const currentRows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    const currentRows = await getRows({ brand, market, from, to });
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, includeComarket: comarket });
+    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo });
 
     const current = buildTrendSeries(currentRows, gran);
     const previous = buildTrendSeries(prevRows, gran);
@@ -187,13 +185,12 @@ app.get('/api/trend', async (req, res) => {
 // ─── Markets ───────────────────────────────────────────
 app.get('/api/markets', async (req, res) => {
   try {
-    const { brand = 'ALL', from, to, compareTo = 'previous_period', includeComarket, dataSource = 'ads' } = req.query;
+    const { brand = 'ALL', from, to, compareTo = 'previous_period', dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarket = includeComarket === 'true';
-    const currentRows = await getRows({ brand, from, to, includeComarket: comarket });
+    const currentRows = await getRows({ brand, from, to });
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevRows = await getRows({ brand, from: compFrom, to: compTo, includeComarket: comarket });
+    const prevRows = await getRows({ brand, from: compFrom, to: compTo });
 
     const currentByMarket = groupBy(currentRows, r => `${r.brand}|${r.market}`);
     const prevByMarket = groupBy(prevRows, r => `${r.brand}|${r.market}`);
@@ -266,15 +263,14 @@ app.get('/api/markets', async (req, res) => {
 // ─── Campaigns ─────────────────────────────────────────
 app.get('/api/campaigns', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, type = 'ALL', includeComarket, compareTo = 'previous_period', dataSource = 'ads' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, type = 'ALL', compareTo = 'previous_period', dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarket = includeComarket === 'true';
-    const rows = await getRows({ brand, market, from, to, campaignType: type, includeComarket: comarket });
+    const rows = await getRows({ brand, market, from, to, campaignType: type });
 
     // Also get comparison for type-level deltas
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, campaignType: type, includeComarket: comarket });
+    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, campaignType: type });
 
     // Group by campaign name
     const byCampaign = groupBy(rows, r => r.campaign);
@@ -443,13 +439,12 @@ app.get('/api/campaigns', async (req, res) => {
 // ─── Granularity ───────────────────────────────────────
 app.get('/api/granularity', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity = 'day', includeComarket, dataSource = 'ads' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity = 'day', dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
-    const comarket = includeComarket === 'true';
-    const currentRows = await getRows({ brand, market, from, to, includeComarket: comarket });
+    const currentRows = await getRows({ brand, market, from, to });
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, includeComarket: comarket });
+    const prevRows = await getRows({ brand, market, from: compFrom, to: compTo });
 
     const currentSeries = buildTrendSeries(currentRows, granularity);
     const prevSeries = buildTrendSeries(prevRows, granularity);
@@ -537,8 +532,7 @@ app.get('/api/granularity', async (req, res) => {
 // ─── Budget (Sheet budget + Google Ads spend + forecast) ──
 app.get('/api/budget', async (req, res) => {
   try {
-    const { brand = 'Brand Alpha', market = 'ALL', month, compareTo = 'previous_month', includeComarket } = req.query;
-    const comarket = includeComarket === 'true';
+    const { brand = 'Brand Alpha', market = 'ALL', month, compareTo = 'previous_month' } = req.query;
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
     // Map brand param
@@ -590,8 +584,8 @@ app.get('/api/budget', async (req, res) => {
     const marketFilter = market !== 'ALL' && market !== 'Autres pays' ? market : undefined;
 
     const [currentRows, compRows] = await Promise.all([
-      getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
-      getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo, includeComarket: comarket }),
+      getRows({ brand: adsBrandKey, market: marketFilter, from, to }),
+      getRows({ brand: adsBrandKey, market: marketFilter, from: compFrom, to: compTo }),
     ]);
 
     // Aggregate helper for a market filter on rows
@@ -821,155 +815,7 @@ app.get('/api/budget/recommendations', async (req, res) => {
   }
 });
 
-// ─── Comarket ──────────────────────────────────────────
-app.get('/api/comarket', async (req, res) => {
-  try {
-    const { from, to, compareTo = 'previous_period', granularity, partnerBrand } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
-
-    let comarketRows = await getComarketRows({ from, to });
-    
-    // Get total FR spend for context (always global FR)
-    const frRows = await getRows({ brand: 'BRAND_A', market: 'FR', from, to, includeComarket: true });
-    const totalFR = aggregateMetrics(frRows);
-
-    // Comparison
-    const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
-    let prevComarketRows = await getComarketRows({ from: compFrom, to: compTo });
-
-    // Extract all available brands before filtering
-    const allBrands = Array.from(new Set(comarketRows.map(r => extractComarketBrand(r.campaign)))).filter(Boolean).sort();
-
-    // Filter by brand if requested
-    if (partnerBrand && partnerBrand !== 'ALL') {
-      comarketRows = comarketRows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
-      prevComarketRows = prevComarketRows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
-    }
-
-    const current = aggregateMetrics(comarketRows);
-    const previous = aggregateMetrics(prevComarketRows);
-
-    const deltas = {
-      impressions_pct: pctChange(current.impressions, previous.impressions),
-      clicks_pct:      pctChange(current.clicks, previous.clicks),
-      ctr_pct:         pctChange(current.ctr, previous.ctr),
-      spend_pct:       pctChange(current.spend, previous.spend),
-      cpc_pct:         pctChange(current.cpc, previous.cpc),
-      conversions_pct: pctChange(current.conversions, previous.conversions),
-      revenue_pct:     pctChange(current.revenue, previous.revenue),
-      cvr_pct:         pctChange(current.cvr, previous.cvr),
-      roas_pct:        pctChange(current.roas, previous.roas),
-    };
-
-    // % of total FR
-    const pctOfFR = {
-      spend: totalFR.spend > 0 ? Math.round((current.spend / totalFR.spend) * 10000) / 100 : 0,
-      revenue: totalFR.revenue > 0 ? Math.round((current.revenue / totalFR.revenue) * 10000) / 100 : 0,
-    };
-
-    // Campaign breakdown with intelligent reconciliation
-    const byCampaign = groupBy(comarketRows, r => r.campaign);
-    const prevByCampaign = groupBy(prevComarketRows, r => r.campaign);
-    
-    // Build a fallback map for reconciliation (Brand + Type)
-    const prevByReconKey = groupBy(prevComarketRows, r => `${extractComarketBrand(r.campaign)}|${r.campaign_type}`);
-
-    const campaigns = Object.entries(byCampaign).map(([name, campRows]) => {
-      const m = aggregateMetrics(campRows);
-      const firstRow = campRows[0];
-      const partnerBrandName = extractComarketBrand(name);
-      const campaignType = firstRow.campaign_type;
-
-      // 1. Try exact name match
-      let pm = aggregateMetrics(prevByCampaign[name] || []);
-      
-      // 2. If no exact match and it's a comarket campaign, try matching by Brand + Type
-      if (pm.impressions === 0) {
-        const reconKey = `${partnerBrandName}|${campaignType}`;
-        const potentialMatches = prevByReconKey[reconKey] || [];
-        if (potentialMatches.length > 0) {
-           // Use the aggregate of that brand/type from last year as a proxy
-           pm = aggregateMetrics(potentialMatches);
-        }
-      }
-
-      return {
-        campaign_name: name,
-        partner_brand: partnerBrandName,
-        status: firstRow.campaign_status === 'Active' ? 'ENABLED' : 'PAUSED',
-        ...m,
-        delta_impressions: pctChange(m.impressions, pm.impressions),
-        delta_clicks:      pctChange(m.clicks, pm.clicks),
-        delta_ctr:         pctChange(m.ctr, pm.ctr),
-        delta_spend:       pctChange(m.spend, pm.spend),
-        delta_cpc:         pctChange(m.cpc, pm.cpc),
-        delta_conversions: pctChange(m.conversions, pm.conversions),
-        delta_revenue:     pctChange(m.revenue, pm.revenue),
-        delta_cvr:         pctChange(m.cvr, pm.cvr),
-        delta_roas:        pctChange(m.roas, pm.roas),
-      };
-    });
-
-    // Brand-level summary (Reconciliation)
-    const currentByBrand = groupBy(comarketRows, r => extractComarketBrand(r.campaign));
-    const prevByBrand = groupBy(prevComarketRows, r => extractComarketBrand(r.campaign));
-    
-    const brandSummary = Object.entries(currentByBrand).map(([bName, bRows]) => {
-      const cur = aggregateMetrics(bRows);
-      const prev = aggregateMetrics(prevByBrand[bName] || []);
-      return {
-        brand: bName,
-        ...cur,
-        delta_impressions: pctChange(cur.impressions, prev.impressions),
-        delta_clicks:      pctChange(cur.clicks, prev.clicks),
-        delta_ctr:         pctChange(cur.ctr, prev.ctr),
-        delta_spend:       pctChange(cur.spend, prev.spend),
-        delta_cpc:         pctChange(cur.cpc, prev.cpc),
-        delta_conversions: pctChange(cur.conversions, prev.conversions),
-        delta_revenue:     pctChange(cur.revenue, prev.revenue),
-        delta_cvr:         pctChange(cur.cvr, prev.cvr),
-        delta_roas:        pctChange(cur.roas, prev.roas),
-      };
-    });
-
-    campaigns.sort((a, b) => b.spend - a.spend);
-    brandSummary.sort((a, b) => b.spend - a.spend);
-
-    // Trend
-    const days = daysBetween(from, to);
-    const gran = granularity || (days <= 90 ? 'day' : 'week');
-    const trend = buildTrendSeries(comarketRows, gran);
-
-    res.json({
-      kpis: { current, previous, deltas, pctOfFR },
-      campaigns,
-      brandSummary,
-      trend,
-      availableBrands: allBrands
-    });
-  } catch (err) {
-    console.error('Comarket error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ─── Helpers ───────────────────────────────────────────
-
-function extractComarketBrand(campaignName) {
-  // Split by | or - and trim each part
-  const parts = campaignName.split(/[|-]/).map(p => p.trim());
-  const idx = parts.findIndex(p => p.toLowerCase().includes('comarket'));
-  if (idx === -1) return '';
-  
-  let rawBrand = parts[idx + 1] || '';
-  
-  // Normalization
-  if (rawBrand.toLowerCase().includes('bioderma')) return 'Bioderma';
-  if (rawBrand.toLowerCase().includes('eucerin')) return 'Eucerin';
-  if (rawBrand.toLowerCase().includes('cooper')) return 'Cooper';
-  
-  return rawBrand;
-}
 
 function buildTrendSeries(rows, granularity) {
   let keyFn;
@@ -1000,11 +846,9 @@ const YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/trend/ytd', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket, onlyComarket, partnerBrand, dataSource = 'ads' } = req.query;
-    const comarket = includeComarket === 'true' || onlyComarket === 'true';
-    const isOnlyComarket = onlyComarket === 'true';
+    const { brand = 'ALL', market = 'ALL', granularity = 'week', dataSource = 'ads' } = req.query;
 
-    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}|${isOnlyComarket}|${partnerBrand || 'ALL'}|${dataSource}`;
+    const cacheKey = `ytd|${brand}|${market}|${granularity}|${dataSource}`;
 
     const cached = ytdCache.get(cacheKey);
     if (cached && (Date.now() - cached.ts) < YTD_CACHE_TTL) {
@@ -1015,15 +859,7 @@ app.get('/api/trend/ytd', async (req, res) => {
     const from = `${today.getFullYear()}-01-01`;
     const to = fmtDate(today);
 
-    let rows = await getRows({ brand, market, from, to, includeComarket: comarket });
-    
-    if (isOnlyComarket) {
-      rows = rows.filter(r => r.campaign.toLowerCase().includes('comarket'));
-    }
-    
-    if (partnerBrand && partnerBrand !== 'ALL') {
-      rows = rows.filter(r => extractComarketBrand(r.campaign) === partnerBrand);
-    }
+    const rows = await getRows({ brand, market, from, to });
 
     const series = buildTrendSeries(rows, granularity);
 
@@ -1105,10 +941,9 @@ const DAILY_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/budget/daily-spend', async (req, res) => {
   try {
-    const { brand = 'Brand Alpha', market = 'ALL', year, includeComarket } = req.query;
-    const comarket = includeComarket === 'true';
+    const { brand = 'Brand Alpha', market = 'ALL', year } = req.query;
     const targetYear = parseInt(year || new Date().getFullYear(), 10);
-    const cacheKey = `daily-spend|${brand}|${market}|${targetYear}|${comarket}`;
+    const cacheKey = `daily-spend|${brand}|${market}|${targetYear}`;
 
     const cached = dailySpendCache.get(cacheKey);
     if (cached && (Date.now() - cached.ts) < DAILY_CACHE_TTL) {
@@ -1138,9 +973,9 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     const [rows, paraLafRows] = await Promise.all([
       isParaLafMarket
         ? Promise.resolve([])
-        : getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
+        : getRows({ brand: adsBrandKey, market: marketFilter, from, to }),
       (isBrandA && (market === 'ALL' || isParaLafMarket))
-        ? getRows({ brand: 'BRAND_C', from, to, includeComarket: comarket })
+        ? getRows({ brand: 'BRAND_C', from, to })
         : Promise.resolve([]),
     ]);
 
@@ -1227,7 +1062,7 @@ app.get('/api/ga4/trend/ytd', async (req, res) => {
     const ga4Rows = await getGA4Rows({ brand, market, from, to, sourceMedium });
     
     // 2. Get Ads Data for Cost (spend)
-    const adsRows = await getRows({ brand, market, from, to, includeComarket: true });
+    const adsRows = await getRows({ brand, market, from, to });
 
     // Helper to group and merge
     function buildMergedTrend(g4Rows, aRows, gran) {

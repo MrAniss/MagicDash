@@ -159,7 +159,6 @@ export function dailyByCampaign(brandKey, market, dateStr) {
       campaign:    tpl.name,
       campaignId:  demoCampaignId(brandKey, market, tpl.name),
       campaignType: tpl.type,
-      comarket:    !!tpl.comarket,
       spend,
       clicks,
       impressions,

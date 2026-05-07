@@ -6,7 +6,6 @@ import GranularityTable from './components/GranularityTable';
 import MarketTable from './components/MarketTable';
 import BudgetPacing from './components/BudgetPacing';
 import CampaignDrilldown from './components/CampaignDrilldown';
-import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
 import ShoppingView from './components/ShoppingView';
 import PaidSocialView from './components/PaidSocialView';
@@ -43,7 +42,6 @@ function loadFilters() {
 const PAID_SEARCH_SUBTABS = [
   { key: 'overview', label: "Vue d'ensemble" },
   { key: 'budget',   label: 'Budget' },
-  { key: 'comarket', label: 'Comarket' },
   { key: 'shopping', label: 'Shopping' },
 ];
 
@@ -212,7 +210,6 @@ function Dashboard() {
             )}
 
             {paidSearchTab === 'budget'   && <BudgetPacing filters={filters} />}
-            {paidSearchTab === 'comarket' && <ComarketView filters={filters} />}
             {paidSearchTab === 'shopping' && <ShoppingView filters={filters} />}
           </>
         )}

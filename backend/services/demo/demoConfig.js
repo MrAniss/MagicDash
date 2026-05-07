@@ -20,11 +20,11 @@ export const DEMO_BRANDS = [
     cvr: 0.022,
     aov: 65,
     campaignTemplates: [
-      { name: 'Search - Brand',                type: 'Search',          share: 0.18 },
+      { name: 'Search - Brand',                type: 'Search',          share: 0.20 },
       { name: 'Search - Generic Skincare',     type: 'Search',          share: 0.10 },
       { name: 'Search - Generic Makeup',       type: 'Search',          share: 0.08 },
       { name: 'Search - Hair Care',            type: 'Search',          share: 0.05 },
-      { name: 'PMax - Top Sellers',            type: 'Performance Max', share: 0.16 },
+      { name: 'PMax - Top Sellers',            type: 'Performance Max', share: 0.18 },
       { name: 'PMax - New Arrivals',           type: 'Performance Max', share: 0.08 },
       { name: 'Shopping - Standard',           type: 'Shopping',        share: 0.10 },
       { name: 'Shopping - Brand',              type: 'Shopping',        share: 0.05 },
@@ -32,8 +32,6 @@ export const DEMO_BRANDS = [
       { name: 'Display - Remarketing',         type: 'Display',         share: 0.04 },
       { name: 'YouTube - Awareness',           type: 'Video',           share: 0.04 },
       { name: 'Demand Gen - Discovery',        type: 'Demand Gen',      share: 0.03 },
-      { name: 'Search - Comarket Partner A',   type: 'Search',          share: 0.02, comarket: true },
-      { name: 'Search - Comarket Partner B',   type: 'Search',          share: 0.02, comarket: true },
     ],
   },
   {

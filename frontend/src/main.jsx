@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
-import { ComarketProvider } from './contexts/ComarketContext';
 import { AuthProvider } from './contexts/AuthContext';
 import App from './App';
 import './index.css';
@@ -22,9 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <ComarketProvider>
-            <App />
-          </ComarketProvider>
+          <App />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

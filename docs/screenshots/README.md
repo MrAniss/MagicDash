@@ -4,7 +4,7 @@ Ce dossier contient les captures d'écran affichées dans le `README.md` racine.
 
 ## Fichiers attendus
 
-Le README référence ces 6 fichiers — il faut les déposer ici avec **exactement ces noms** (sinon les images seront cassées sur GitHub) :
+Le README référence ces 5 fichiers — il faut les déposer ici avec **exactement ces noms** (sinon les images seront cassées sur GitHub) :
 
 | Fichier | Vue à capturer | Conseil |
 |---|---|---|
@@ -13,7 +13,6 @@ Le README référence ces 6 fichiers — il faut les déposer ici avec **exactem
 | `view-budget.png` | Onglet **Budget** | Pacing + graphique daily spend |
 | `view-shopping.png` | Onglet **Shopping** | Scorecards prix + tableau marques |
 | `view-analytics.png` | Onglet **Analytics** | KPIs GA4 + funnel + bounce rate |
-| `view-comarket.png` | Onglet **Comarket** | Tableau partenaires |
 
 ## Conseils
 

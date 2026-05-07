@@ -141,8 +141,8 @@ router.get('/markets-summary', async (req, res) => {
                      : 'BRAND_C';
 
       // Fetch Ads spend for ROAS calculation (always needed if sourceMedium is google/cpc)
-      const adsRows = await getRows({ brand: brandKey, from, to, includeComarket: true });
-      const adsCompRows = await getRows({ brand: brandKey, from: compFrom, to: compTo, includeComarket: true });
+      const adsRows = await getRows({ brand: brandKey, from, to });
+      const adsCompRows = await getRows({ brand: brandKey, from: compFrom, to: compTo });
 
       const adsByMarket = {};
       adsRows.forEach(r => adsByMarket[r.market] = (adsByMarket[r.market] || 0) + r.cost);

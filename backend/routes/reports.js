@@ -79,11 +79,10 @@ router.get('/weekly-summary', async (req, res) => {
     };
 
     // 2. Fetch data (filtered by market if provided)
-    // Always include CoMarket data for accurate totals (especially for France)
     const [rowsW, rowsW1, rowsW_N1] = await Promise.all([
-      getRows({ brand, market, from: periods.current.from, to: periods.current.to, includeComarket: true }),
-      getRows({ brand, market, from: periods.previous.from, to: periods.previous.to, includeComarket: true }),
-      getRows({ brand, market, from: periods.lastYear.from, to: periods.lastYear.to, includeComarket: true }),
+      getRows({ brand, market, from: periods.current.from, to: periods.current.to }),
+      getRows({ brand, market, from: periods.previous.from, to: periods.previous.to }),
+      getRows({ brand, market, from: periods.lastYear.from, to: periods.lastYear.to }),
     ]);
 
     // 3. Determine Granularity
@@ -119,7 +118,7 @@ router.get('/weekly-summary', async (req, res) => {
         // Per-market granularity: fetch GA4 KPIs per (brand, market) seen in Ads rows
         // Since `brand` may be 'ALL', we need to iterate over (brand, market) pairs
         // present in the Ads result for this period. Safer: derive from rowsW unions.
-        const adsRowsForPeriod = await getRows({ brand, market, from, to, includeComarket: true });
+        const adsRowsForPeriod = await getRows({ brand, market, from, to });
         const pairs = new Set(adsRowsForPeriod.map(r => `${r.brand}|${r.market}`));
         const map = {};
         await Promise.all([...pairs].map(async (pair) => {

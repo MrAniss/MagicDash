@@ -101,7 +101,7 @@ function CustomTooltip({ active, payload, label, kpiOption, seriesData }) {
   );
 }
 
-export default function CostKpiChart({ filters, onlyComarket, partnerBrand, dataSource = 'ads' }) {
+export default function CostKpiChart({ filters, dataSource = 'ads' }) {
   const [selectedKpi, setSelectedKpi] = useState('roas');
   const [granularity, setGranularity] = useState('week');
 
@@ -109,9 +109,6 @@ export default function CostKpiChart({ filters, onlyComarket, partnerBrand, data
     brand: filters.brand,
     market: filters.market,
     granularity,
-    includeComarket: filters.includeComarket,
-    onlyComarket,
-    partnerBrand,
     dataSource,
   });
 

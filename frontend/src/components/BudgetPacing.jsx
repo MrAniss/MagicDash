@@ -5,7 +5,6 @@ import { fEur, fNum, fROAS, fAov, fDelta, fEurInt } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
 import BudgetDailyChart from './BudgetDailyChart';
 import { API_URL, authFetch } from '../utils/api';
-import { useComarket } from '../contexts/ComarketContext';
 
 const BRAND_OPTIONS = [
   { key: 'BRAND_A', label: 'Brand Alpha' },
@@ -41,13 +40,12 @@ function getMarketsForBrand(brand) {
   return BRAND_B_MARKETS;
 }
 
-async function fetchBudget(brand, market, month, compareTo, includeComarket) {
+async function fetchBudget(brand, market, month, compareTo) {
   const url = new URL('/api/budget', API_URL || window.location.origin);
   url.searchParams.set('brand', brand);
   url.searchParams.set('market', market);
   url.searchParams.set('month', month);
   url.searchParams.set('compareTo', compareTo);
-  url.searchParams.set('includeComarket', includeComarket);
   const res = await authFetch(url);
   if (!res.ok) throw new Error('Budget API error');
   return res.json();
@@ -217,7 +215,6 @@ export default function BudgetPacing({ filters }) {
   const [compareTo, setCompareTo] = useState(
     () => localStorage.getItem('magicdash_budget_compare') || 'previous_month'
   );
-  const { includeComarket } = useComarket();
 
   // Sync with global filters if they change
   useEffect(() => {
@@ -232,8 +229,8 @@ export default function BudgetPacing({ filters }) {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['budget', brand, market, month, compareTo, includeComarket],
-    queryFn: () => fetchBudget(brand, market, month, compareTo, includeComarket),
+    queryKey: ['budget', brand, market, month, compareTo],
+    queryFn: () => fetchBudget(brand, market, month, compareTo),
     enabled: !!month,
     placeholderData: (prev) => prev,
   });
@@ -283,11 +280,6 @@ export default function BudgetPacing({ filters }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-navy">Budget & Pacing</h2>
-          <span
-            className={`text-[11px] font-medium px-2.5 py-1 rounded-[6px] ${includeComarket ? 'bg-blue-50 text-blue-600' : 'bg-success-bg text-success'}`}
-          >
-            {includeComarket ? 'Comarket inclus' : 'Comarket exclu'}
-          </span>
         </div>
         <div className="flex items-center gap-2">
           <select

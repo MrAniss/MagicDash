@@ -59,7 +59,6 @@ function buildRow(brandKey, market, campaignRow) {
     searchBudgetLostImpressionShare: lostBudget,
     absoluteTopImpressionPercentage: absTop,
     topImpressionPercentage: top,
-    comarket: campaignRow.comarket,
   };
 }
 
@@ -70,7 +69,7 @@ function brandKeysForFilter(brandFilter) {
 
 // ─── Public API ────────────────────────────────────────────
 
-export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaignType, includeComarket = false } = {}) {
+export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaignType } = {}) {
   if (!from || !to) return [];
   const brandKeys = brandKeysForFilter(brand);
   const dates = eachDate(from, to);
@@ -86,7 +85,6 @@ export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaig
       for (const date of dates) {
         const camps = dailyByCampaign(bKey, m, date);
         for (const c of camps) {
-          if (!includeComarket && c.comarket) continue;
           out.push(buildRow(bKey, m, c));
         }
       }
@@ -120,7 +118,6 @@ export async function getSignalRows(brand, dateFrom, dateTo) {
     for (const m of bDef.markets) {
       for (const date of dates) {
         for (const c of dailyByCampaign(bKey, m.code, date)) {
-          if (c.comarket) continue;
           const key = `${bKey}|${m.code}|${c.campaignId}`;
           if (!acc[key]) {
             acc[key] = {
@@ -164,7 +161,6 @@ function aggregateWindow(brandKey, market, days) {
     d.setDate(d.getDate() - i - 1);
     const ds = d.toISOString().slice(0, 10);
     for (const c of dailyByCampaign(brandKey, market, ds)) {
-      if (c.comarket) continue;
       const id = c.campaignId;
       if (!out[id]) {
         out[id] = {
@@ -371,21 +367,6 @@ export async function getScoringData(from, to) {
   return Object.values(buckets).sort((a, b) => a.order - b.order);
 }
 
-// ─── Comarket ──────────────────────────────────────────────
-
-export async function getComarketRows({ from, to } = {}) {
-  // Comarket campaigns only exist in BRAND_A FR (per the demo config).
-  const dates = eachDate(from, to);
-  const out = [];
-  for (const date of dates) {
-    for (const c of dailyByCampaign('BRAND_A', 'FR', date)) {
-      if (!c.comarket) continue;
-      out.push(buildRow('BRAND_A', 'FR', c));
-    }
-  }
-  return out;
-}
-
 // ─── Competition ───────────────────────────────────────────
 
 export async function getCompetitionData(brand, dateFrom, dateTo) {
@@ -402,7 +383,6 @@ export async function getCompetitionData(brand, dateFrom, dateTo) {
       const totals = { Search: { impressions: 0, cost: 0 }, Shopping: { impressions: 0, cost: 0 }, 'Performance Max': { impressions: 0, cost: 0 } };
       for (const date of eachDate(dateFrom, dateTo)) {
         for (const c of dailyByCampaign(bKey, m.code, date)) {
-          if (c.comarket) continue;
           if (!totals[c.campaignType]) continue;
           totals[c.campaignType].impressions += c.impressions;
           totals[c.campaignType].cost        += c.spend;

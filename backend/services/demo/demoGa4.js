@@ -223,7 +223,6 @@ export async function getGA4ByCampaign({ brand = 'ALL', market = 'ALL', from, to
         // GA4 attribution and the Ads tab agree.
         const camps = dailyByCampaign(bKey, m, date);
         for (const c of camps) {
-          if (c.comarket) continue;
           const name = c.campaign;
           if (!acc[name]) acc[name] = { campaignName: name, sessions: 0, transactions: 0, revenue: 0 };
           // Sessions on a paid campaign ≈ clicks; transactions = conversions
