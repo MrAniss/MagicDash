@@ -139,6 +139,7 @@ dist
 
 # Project-specific
 backend/tokens.json
+backend/users.json
 backend_logs.txt
 backend/server.log
 backend/data/*.db

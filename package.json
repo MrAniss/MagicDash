@@ -7,7 +7,15 @@
     "dev:all": "concurrently \"npm run dev:back\" \"npm run dev:front\"",
     "dev:back": "npm run dev --workspace=backend",
     "dev:front": "npm run dev --workspace=frontend",
-    "install:all": "npm install"
+    "install:all": "npm install",
+    "pm:start":   "pm2 start ecosystem.config.cjs && pm2 save",
+    "pm:stop":    "pm2 stop ecosystem.config.cjs",
+    "pm:restart": "pm2 restart ecosystem.config.cjs",
+    "pm:reload":  "pm2 reload ecosystem.config.cjs",
+    "pm:delete":  "pm2 delete ecosystem.config.cjs",
+    "pm:logs":    "pm2 logs sea-dashboard-backend",
+    "pm:status":  "pm2 status",
+    "pm:flush":   "pm2 flush sea-dashboard-backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

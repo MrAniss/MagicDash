@@ -226,6 +226,9 @@ export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaig
     if (brand === 'ALL' || brand === 'PARAPHARMACIE_LAFAYETTE') {
       promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.PARAPHARMACIE_LAFAYETTE, from, to, includeComarket));
     }
+    if (brand === 'ALL' || brand === 'LASANTE') {
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.LASANTE, from, to, includeComarket));
+    }
 
     const results = await Promise.all(promises);
     allRows = results.flat().sort((a, b) => a.date.localeCompare(b.date));
@@ -324,6 +327,12 @@ export async function getSignalRows(brand, dateFrom, dateTo) {
     const acc = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
     rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'PARAPHARMACIE_LAFAYETTE', 'Parapharmacie Lafayette', acc.market)
       .catch(() => []);
+  } else if (brand === 'LASANTE') {
+    const acc = BRANDS.LASANTE.accounts[0];
+    if (acc) {
+      rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'LASANTE', 'LaSante.net', acc.market)
+        .catch(() => []);
+    }
   }
 
   setCache(cacheKey, rows);
@@ -420,6 +429,9 @@ export async function getCampaignAuditData(brand) {
       { ...BRANDS.PASCAL_COSTE.accounts[0],           brand: 'PASCAL_COSTE',           brandLabel: 'Pascal Coste Shopping',   loginId: BRANDS.PASCAL_COSTE.accounts[0].id },
       { ...BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0], brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0].id },
     ];
+    if (BRANDS.LASANTE.accounts[0]) {
+      accountList.push({ ...BRANDS.LASANTE.accounts[0], brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: BRANDS.LASANTE.accounts[0].id });
+    }
   } else if (brand === 'COCOONCENTER') {
     accountList = BRANDS.COCOONCENTER.accounts.map(a => ({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
   } else if (brand === 'PASCAL_COSTE') {
@@ -428,6 +440,9 @@ export async function getCampaignAuditData(brand) {
   } else if (brand === 'PARAPHARMACIE_LAFAYETTE') {
     const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
     accountList = [{ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id }];
+  } else if (brand === 'LASANTE') {
+    const a = BRANDS.LASANTE.accounts[0];
+    if (a) accountList = [{ ...a, brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: a.id }];
   }
 
   // All accounts × 3 periods + budget query in parallel
@@ -586,6 +601,11 @@ export async function getShoppingData(brand, market, from, to) {
         const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
         if (market === 'ALL' || a.market === market)
           accountList.push({ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id });
+      }
+      if (bKey === 'LASANTE' || bKey === 'ALL') {
+        const a = BRANDS.LASANTE.accounts[0];
+        if (a && (market === 'ALL' || a.market === market))
+          accountList.push({ ...a, brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: a.id });
       }
 
       const results = await Promise.all(
@@ -858,6 +878,12 @@ export async function getCompetitionData(brand, dateFrom, dateTo) {
     const acc = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
     const r = await queryAccountCompetition(api, acc.id, acc.id, ownGAQL, auctionGAQL, refreshToken, acc.market);
     allOwn = r.own; allInsights = r.insights;
+  } else if (brand === 'LASANTE') {
+    const acc = BRANDS.LASANTE.accounts[0];
+    if (acc) {
+      const r = await queryAccountCompetition(api, acc.id, acc.id, ownGAQL, auctionGAQL, refreshToken, acc.market);
+      allOwn = r.own; allInsights = r.insights;
+    }
   }
 
   const data = { own: allOwn, insights: allInsights };
@@ -921,9 +947,11 @@ export async function getCompetitionTrendData(brand, market, dateFrom, dateTo) {
     );
     rows = results.flat();
   } else {
-    const brandDef = brand === 'PASCAL_COSTE' ? BRANDS.PASCAL_COSTE : BRANDS.PARAPHARMACIE_LAFAYETTE;
+    const brandDef = brand === 'PASCAL_COSTE' ? BRANDS.PASCAL_COSTE
+      : brand === 'LASANTE' ? BRANDS.LASANTE
+      : BRANDS.PARAPHARMACIE_LAFAYETTE;
     const acc = brandDef.accounts[0];
-    if (market === 'ALL' || acc.market === market) {
+    if (acc && (market === 'ALL' || acc.market === market)) {
       const customer = getCustomer(api, acc.id, acc.id, refreshToken);
       rows = await customer.query(gaql)
         .then(r => r.map(row => normRow(row, acc.market)))

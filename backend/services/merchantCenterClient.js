@@ -35,6 +35,7 @@ const MC_ENV_KEYS = {
   },
   PASCAL_COSTE:            { FR: 'MC_ID_PASCAL_COSTE_FR' },
   PARAPHARMACIE_LAFAYETTE: { FR: 'MC_ID_PARAPHARMACIE_LAFAYETTE_FR' },
+  LASANTE:                 { FR: 'MC_ID_LASANTE_FR' },
 };
 
 // Flat list of MC accounts per brand — used for "market=ALL" queries that
@@ -78,6 +79,9 @@ const MC_MARKET = {
   },
   PARAPHARMACIE_LAFAYETTE: {
     FR: { merchantId: env('MC_ID_PARAPHARMACIE_LAFAYETTE_FR'), countryCode: 'FR' },
+  },
+  LASANTE: {
+    FR: { merchantId: env('MC_ID_LASANTE_FR'), countryCode: 'FR' },
   },
 };
 
@@ -751,6 +755,136 @@ async function fetchProductLinksForMerchant(merchantId, countryCode = null) {
     console.warn(`MC product links ${merchantId}: 0 URLs — NOT caching, will retry on next request`);
   }
   return links;
+}
+
+// ─── Full product attributes via products.list (Feed Monitor) ──
+// Returns the full Product resource for every offer of a given brand/market.
+// Used by the Feed Monitor snapshot service, NOT cached in memory because the
+// snapshot is meant to capture the live state at a precise moment in time.
+// Throttled at 100ms between pages to stay under the MC rate limit.
+async function fetchAllProductsForMerchant(merchantId, countryCode = null) {
+  const auth    = getOAuth2Client();
+  const content = google.content({ version: 'v2.1', auth });
+
+  const products = [];
+  let pageToken;
+  let pages = 0;
+  let totalRows = 0;
+  let droppedCountry = 0;
+  let droppedNoId = 0;
+  let sampleCountry = null;
+
+  do {
+    const params = { merchantId, maxResults: 250 };
+    if (pageToken) params.pageToken = pageToken;
+
+    const res = await content.products.list(params).catch(e => {
+      console.error(`MC fetchAllProducts ${merchantId}:`, e?.message || e);
+      return { data: { resources: [] } };
+    });
+
+    for (const prod of (res.data.resources || [])) {
+      totalRows++;
+      const idParts = (prod.id || '').split(':');
+      const offerId = prod.offerId || idParts.slice(3).join(':');
+      if (!offerId) { droppedNoId++; continue; }
+
+      // Filter by country (accepts custom feed labels like "FR_NEW")
+      if (countryCode && baseCountry(idParts[2]) !== countryCode) {
+        droppedCountry++;
+        if (sampleCountry == null) sampleCountry = idParts[2] || '(empty)';
+        continue;
+      }
+
+      // Prefer online channel
+      const isOnline = (prod.id || '').startsWith('online:');
+      if (!isOnline && products.find(p => p.id === offerId)) continue;
+
+      products.push({
+        id:                       offerId,
+        feed_id:                  prod.id,
+        title:                    prod.title || '',
+        description:              prod.description || '',
+        link:                     prod.link || '',
+        image_link:               prod.imageLink || '',
+        additional_image_link:    Array.isArray(prod.additionalImageLinks) ? prod.additionalImageLinks.join('|') : '',
+        brand:                    prod.brand || '',
+        product_type:             Array.isArray(prod.productTypes) ? prod.productTypes.join(' > ') : (prod.productType || ''),
+        google_product_category:  prod.googleProductCategory || '',
+        gtin:                     prod.gtin || '',
+        mpn:                      prod.mpn || '',
+        identifier_exists:        prod.identifierExists != null ? String(prod.identifierExists) : '',
+        condition:                prod.condition || '',
+        availability:             prod.availability || '',
+        price:                    prod.price ? `${prod.price.value} ${prod.price.currency || ''}`.trim() : '',
+        sale_price:               prod.salePrice ? `${prod.salePrice.value} ${prod.salePrice.currency || ''}`.trim() : '',
+        sale_price_effective_date: prod.salePriceEffectiveDate || '',
+        shipping:                 Array.isArray(prod.shipping) ? JSON.stringify(prod.shipping) : '',
+        shipping_weight:          prod.shippingWeight ? `${prod.shippingWeight.value} ${prod.shippingWeight.unit || ''}`.trim() : '',
+        item_group_id:            prod.itemGroupId || '',
+        color:                    prod.color || '',
+        size:                     Array.isArray(prod.sizes) ? prod.sizes.join('|') : (prod.sizes || ''),
+        gender:                   prod.gender || '',
+        age_group:                prod.ageGroup || '',
+        material:                 prod.material || '',
+        pattern:                  prod.pattern || '',
+        tax_category:             prod.taxCategory || '',
+        energy_efficiency_class:  prod.energyEfficiencyClass || '',
+        custom_label_0:           prod.customLabel0 || '',
+        custom_label_1:           prod.customLabel1 || '',
+        custom_label_2:           prod.customLabel2 || '',
+        custom_label_3:           prod.customLabel3 || '',
+        custom_label_4:           prod.customLabel4 || '',
+      });
+    }
+
+    pageToken = res.data.nextPageToken;
+    pages++;
+    // Throttle to respect MC rate limits
+    if (pageToken) await new Promise(r => setTimeout(r, 100));
+  } while (pageToken && pages < 2000);
+
+  console.log(`MC fetchAllProducts ${merchantId} country=${countryCode || 'ALL'}: ${totalRows} rows API, ${products.length} matched (dropped: ${droppedCountry} country${sampleCountry ? ` [first sample: ${sampleCountry}]` : ''}, ${droppedNoId} no-id)`);
+  return products;
+}
+
+// Detect if a merchant ID is dedicated to a single market in MC_MARKET (true for
+// almost all Cocooncenter accounts), versus shared across multiple markets like
+// the UK account that also serves US/CA/AU/SA/NO/IE.
+function isDedicatedMerchant(brandKey, merchantId) {
+  const map = MC_MARKET[brandKey];
+  if (!map) return false;
+  let count = 0;
+  for (const v of Object.values(map)) {
+    if (v.merchantId === merchantId) count++;
+    if (count > 1) return false;
+  }
+  return count === 1;
+}
+
+export async function fetchAllProducts(brand, market = 'ALL') {
+  const targets = getMcTargets(brand, market);
+  if (!targets.length) return [];
+  const brandKey = (brand || '').toUpperCase();
+  const all = [];
+  // Sequential — avoids parallel fan-out overwhelming MC API for big snapshots
+  for (const { merchantId, countryCode } of targets) {
+    // Dedicated accounts already isolate a single country; the client-side
+    // country filter just risks rejecting everything if the product IDs use
+    // an unexpected format. Skip filter for them.
+    const filterCountry = isDedicatedMerchant(brandKey, merchantId) ? null : countryCode;
+    if (countryCode && !filterCountry) {
+      console.log(`MC fetchAllProducts: dedicated account ${merchantId} (${brandKey}/${countryCode}) — skipping country filter`);
+    }
+    const list = await fetchAllProductsForMerchant(merchantId, filterCountry);
+    all.push(...list);
+  }
+  // Dedupe by offer id (offer can appear in multiple sub-accounts)
+  const byId = {};
+  for (const p of all) {
+    if (!byId[p.id]) byId[p.id] = p;
+  }
+  return Object.values(byId);
 }
 
 export async function getProductLinkMap(brand, market = 'ALL') {

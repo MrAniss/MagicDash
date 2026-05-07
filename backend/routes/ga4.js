@@ -135,8 +135,9 @@ router.get('/markets-summary', async (req, res) => {
     const getNcRate = (d) => d.transactions > 0 ? (d.newCustomers / d.transactions) * 100 : 0;
 
     for (const b of brands) {
-      const brandKey = b.name === 'Cocooncenter' ? 'COCOONCENTER' 
-                     : b.name === 'Pascal Coste Shopping' ? 'PASCAL_COSTE' 
+      const brandKey = b.name === 'Cocooncenter' ? 'COCOONCENTER'
+                     : b.name === 'Pascal Coste Shopping' ? 'PASCAL_COSTE'
+                     : b.name === 'LaSante.net' ? 'LASANTE'
                      : 'PARAPHARMACIE_LAFAYETTE';
 
       // Fetch Ads spend for ROAS calculation (always needed if sourceMedium is google/cpc)

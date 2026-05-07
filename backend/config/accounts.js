@@ -71,6 +71,11 @@ export const BRANDS = {
     mode: 'standalone',
     accounts: buildStandaloneAccount('PARAPHARMACIE_LAFAYETTE', 'FR', 'France'),
   },
+  LASANTE: {
+    name: 'LaSante.net',
+    mode: 'standalone',
+    accounts: buildStandaloneAccount('LASANTE', 'FR', 'France'),
+  },
 };
 
 /**

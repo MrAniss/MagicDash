@@ -114,7 +114,7 @@ function extractMarketFromStreamName(displayName, brandName) {
     if (patterns.some(p => name.includes(p))) return market;
   }
 
-  if (brandName === 'Pascal Coste Shopping' || brandName === 'Parapharmacie Lafayette') {
+  if (brandName === 'Pascal Coste Shopping' || brandName === 'Parapharmacie Lafayette' || brandName === 'LaSante.net') {
     return 'FR';
   }
 
@@ -204,6 +204,7 @@ const MARKET_HOSTNAMES = {
   },
   PASCAL_COSTE:            { FR: 'www.pascal-coste.com' },
   PARAPHARMACIE_LAFAYETTE: { FR: 'www.parapharmacielafayette.com' },
+  // LASANTE: no hostname filter — single dedicated GA4 property, no need to filter.
 };
 
 // Marchés sans domaine propre → filtrage hostname partagé + pays
@@ -544,6 +545,52 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
     })
     .sort((a, b) => b.sessions - a.sessions);
 
+  setCache(cacheKey, result);
+  return result;
+}
+
+// ─── GA4 by Google Ads campaign name ──────────────────
+// Returns an array of { campaignName, sessions, transactions, revenue }.
+// Uses the GA4 dimension `sessionGoogleAdsCampaignName`, populated when the
+// GA4 property is linked to the matching Google Ads account. Filtered to
+// `google / cpc` (or whatever sourceMedium is passed) so we only count
+// SEA-attributed sessions.
+export async function getGA4ByCampaign({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  const filterTag = resolveFilterTag(brand, market);
+  const cacheKey  = `ga4_by_campaign_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const properties = resolvePropertyIds(brand, market);
+  const metrics = ['sessions', 'totalRevenue', 'transactions'];
+
+  const grouped = {};
+  for (const [bKey, propId] of properties) {
+    const filter = combineFilters(
+      buildStreamFilter(bKey, market),
+      buildSourceMediumFilter(sourceMedium)
+    );
+    const rows = await runGA4Report({
+      propertyId: propId,
+      dateFrom: from,
+      dateTo: to,
+      dimensions: ['sessionGoogleAdsCampaignName'],
+      metrics,
+      dimensionFilter: filter,
+    }).catch(err => {
+      console.error(`GA4 by-campaign query error (${bKey}):`, err.message);
+      return [];
+    });
+    for (const r of rows) {
+      const name = r.sessionGoogleAdsCampaignName || '(not set)';
+      if (!grouped[name]) grouped[name] = { campaignName: name, sessions: 0, transactions: 0, revenue: 0 };
+      grouped[name].sessions += r.sessions || 0;
+      grouped[name].transactions += r.transactions || 0;
+      grouped[name].revenue += r.totalRevenue || 0;
+    }
+  }
+
+  const result = Object.values(grouped);
   setCache(cacheKey, result);
   return result;
 }

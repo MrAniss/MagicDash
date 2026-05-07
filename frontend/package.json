@@ -14,12 +14,14 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.56.2",
+    "@tanstack/react-virtual": "^3.13.24",
     "date-fns": "^3.6.0",
     "flag-icons": "^7.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

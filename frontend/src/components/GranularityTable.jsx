@@ -77,7 +77,7 @@ const COLS = [
   { key: 'delta_aov', label: 'Δ', format: (v) => fDelta(v, 'pct'), align: 'right', isDelta: true },
 ];
 
-export default function GranularityTable({ filters }) {
+export default function GranularityTable({ filters, dataSource = 'ads' }) {
   const [gran, setGran] = useState('day');
 
   const { data, isLoading } = useGranularity({
@@ -87,6 +87,7 @@ export default function GranularityTable({ filters }) {
     to: filters.to,
     compareTo: filters.compareTo,
     granularity: gran,
+    dataSource,
   });
 
   const granPicker = (

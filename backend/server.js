@@ -8,13 +8,14 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 import express from 'express';
 import cors from 'cors';
 import { authRouter, isAuthenticated } from './auth.js';
+import { userAuthRouter, requireUser } from './userAuth.js';
 import { getRows, getComarketRows, clearCache, clearScoringCache } from './googleAdsClient.js';
 import { generateRecommendations } from './services/recommendationEngine.js';
 import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
 import { getBudgetForMonth, getPCSBudgetForMonth, clearBudgetCache } from './services/budgetSheetReader.js';
 import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
-import { clearGA4Cache, getGA4Rows } from './ga4Client.js';
+import { clearGA4Cache, getGA4Rows, getGA4Kpis, getGA4ByCampaign } from './ga4Client.js';
 import { clearMcCache } from './services/merchantCenterClient.js';
 import { initCacheWarmer } from './services/cacheWarmer.js';
 import ga4Router from './routes/ga4.js';
@@ -22,8 +23,9 @@ import recommendationsRouter from './routes/recommendations.js';
 import shoppingRouter from './routes/shopping.js';
 import reportsRouter from './routes/reports.js';
 import paidSocialRouter from './routes/paidSocial.js';
+import feedMonitorRouter from './routes/feedMonitor.js';
+import { initScheduler } from './services/scheduler.js';
 import { clearMetaCache } from './metaAdsClient.js';
-import { clearGscCache } from './searchConsoleClient.js';
 
 import { getComparisonDates, fmtDate, daysBetween, r2, pctChange, getISOWeek } from './dateUtils.js';
 
@@ -43,14 +45,22 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
 
 authRouter(app);
+userAuthRouter(app);
+
+// Toutes les routes /api/* et /auth/user-me exigent un JWT user valide.
+// Les routes /auth/* de Google OAuth (login, callback, status, logout) restent ouvertes.
+// TODO AUTH — décommenter pour activer la protection user (nécessite users.json rempli via scripts/addUser.js)
+// app.use('/api', requireUser);
+
 app.use('/api/ga4', ga4Router);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/shopping', shoppingRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/paid-social', paidSocialRouter);
+app.use('/api/feed-monitor', feedMonitorRouter);
 
 app.get('/api/mode', (_req, res) => res.json({
   source: DATA_SOURCE,
@@ -63,26 +73,66 @@ app.post('/api/cache/clear', (_req, res) => {
   clearBudgetCache();
   clearGA4Cache();
   clearMcCache();
-  clearGscCache();
   clearMetaCache();
   ytdCache.clear();
   ga4YtdCache.clear();
   res.json({ ok: true });
 });
 
+// ─── GA4 reconciliation helpers ────────────────────────
+// When dataSource === 'ga4', we keep Ads cost-side metrics (impressions,
+// clicks, ctr, spend, cpc) and override conv-side metrics with GA4 figures
+// filtered on `google / cpc` (i.e. SEA-attributed sessions in GA4).
+const GA4_SEA_SOURCE_MEDIUM = 'google / cpc';
+
+function applyGA4Conv(adsAgg, ga4Agg) {
+  if (!ga4Agg) return adsAgg;
+  const transactions = ga4Agg.transactions || 0;
+  const revenue = ga4Agg.revenue || 0;
+  const sessions = ga4Agg.sessions || 0;
+  const spend = adsAgg.spend || 0;
+  return {
+    ...adsAgg,
+    conversions: Math.round(transactions * 100) / 100,
+    revenue: r2(revenue),
+    cvr: sessions > 0 ? r2((transactions / sessions) * 100) : 0,
+    aov: transactions > 0 ? r2(revenue / transactions) : 0,
+    roas: spend > 0 ? r2(revenue / spend) : 0,
+  };
+}
+
+function aggregateGA4RowList(rows) {
+  let sessions = 0, transactions = 0, revenue = 0;
+  for (const r of rows || []) {
+    sessions += r.sessions || 0;
+    transactions += r.transactions || 0;
+    revenue += r.revenue || 0;
+  }
+  return { sessions, transactions, revenue };
+}
+
 // ─── KPIs ──────────────────────────────────────────────
 app.get('/api/kpis', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', includeComarket } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', includeComarket, dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
     const comarket = includeComarket === 'true';
     const currentRows = await getRows({ brand, market, from, to, includeComarket: comarket });
-    const current = aggregateMetrics(currentRows);
+    let current = aggregateMetrics(currentRows);
 
     const { compFrom, compTo } = getComparisonDates(from, to, compareTo);
     const prevRows = await getRows({ brand, market, from: compFrom, to: compTo, includeComarket: comarket });
-    const previous = aggregateMetrics(prevRows);
+    let previous = aggregateMetrics(prevRows);
+
+    if (dataSource === 'ga4') {
+      const [ga4Cur, ga4Prev] = await Promise.all([
+        getGA4Kpis({ brand, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        getGA4Kpis({ brand, market, from: compFrom, to: compTo, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+      ]);
+      current = applyGA4Conv(current, ga4Cur);
+      previous = applyGA4Conv(previous, ga4Prev);
+    }
 
     const deltas = {
       spend_pct: pctChange(current.spend, previous.spend),
@@ -97,7 +147,7 @@ app.get('/api/kpis', async (req, res) => {
       cpc_pct: pctChange(current.cpc, previous.cpc),
     };
 
-    res.json({ current, previous, deltas });
+    res.json({ current, previous, deltas, dataSource });
   } catch (err) {
     console.error('KPI error:', err.message);
     res.status(500).json({ error: err.message });
@@ -131,7 +181,7 @@ app.get('/api/trend', async (req, res) => {
 // ─── Markets ───────────────────────────────────────────
 app.get('/api/markets', async (req, res) => {
   try {
-    const { brand = 'ALL', from, to, compareTo = 'previous_period', includeComarket } = req.query;
+    const { brand = 'ALL', from, to, compareTo = 'previous_period', includeComarket, dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
     const comarket = includeComarket === 'true';
@@ -142,11 +192,32 @@ app.get('/api/markets', async (req, res) => {
     const currentByMarket = groupBy(currentRows, r => `${r.brand}|${r.market}`);
     const prevByMarket = groupBy(prevRows, r => `${r.brand}|${r.market}`);
 
+    // For GA4 mode: pre-fetch GA4 KPIs in parallel for each (brand,market) pair, both periods
+    const ga4Map = { current: {}, previous: {} };
+    if (dataSource === 'ga4') {
+      const keys = Object.keys(currentByMarket);
+      const fetchPair = async (key) => {
+        const [brandKey, market] = key.split('|');
+        const [cur, prev] = await Promise.all([
+          getGA4Kpis({ brand: brandKey, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+          getGA4Kpis({ brand: brandKey, market, from: compFrom, to: compTo, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        ]);
+        ga4Map.current[key] = cur;
+        ga4Map.previous[key] = prev;
+      };
+      await Promise.all(keys.map(fetchPair));
+    }
+
     const results = [];
     for (const [key, rows] of Object.entries(currentByMarket)) {
       const [brandKey, market] = key.split('|');
-      const cur = aggregateMetrics(rows);
-      const prev = aggregateMetrics(prevByMarket[key] || []);
+      let cur = aggregateMetrics(rows);
+      let prev = aggregateMetrics(prevByMarket[key] || []);
+
+      if (dataSource === 'ga4') {
+        cur = applyGA4Conv(cur, ga4Map.current[key]);
+        prev = applyGA4Conv(prev, ga4Map.previous[key]);
+      }
 
       const brandObj = BRANDS[brandKey];
       const acc = brandObj?.accounts.find(a => a.market === market);
@@ -189,7 +260,7 @@ app.get('/api/markets', async (req, res) => {
 // ─── Campaigns ─────────────────────────────────────────
 app.get('/api/campaigns', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, type = 'ALL', includeComarket, compareTo = 'previous_period' } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, type = 'ALL', includeComarket, compareTo = 'previous_period', dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
     const comarket = includeComarket === 'true';
@@ -203,9 +274,24 @@ app.get('/api/campaigns', async (req, res) => {
     const byCampaign = groupBy(rows, r => r.campaign);
     const prevByCampaign = groupBy(prevRows, r => r.campaign);
 
+    // GA4 reconciliation by campaign name (Phase 2)
+    let ga4CurByName = {}, ga4PrevByName = {};
+    if (dataSource === 'ga4') {
+      const [g4Cur, g4Prev] = await Promise.all([
+        getGA4ByCampaign({ brand, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        getGA4ByCampaign({ brand, market, from: compFrom, to: compTo, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+      ]);
+      for (const r of g4Cur)  ga4CurByName[r.campaignName]  = r;
+      for (const r of g4Prev) ga4PrevByName[r.campaignName] = r;
+    }
+
     const campaigns = Object.entries(byCampaign).map(([name, campRows]) => {
-      const cur = aggregateMetrics(campRows);
-      const prev = aggregateMetrics(prevByCampaign[name] || []);
+      let cur = aggregateMetrics(campRows);
+      let prev = aggregateMetrics(prevByCampaign[name] || []);
+      if (dataSource === 'ga4') {
+        cur = applyGA4Conv(cur, ga4CurByName[name]);
+        prev = applyGA4Conv(prev, ga4PrevByName[name]);
+      }
       const firstRow = campRows[0];
       return {
         campaign_name: name,
@@ -228,45 +314,120 @@ app.get('/api/campaigns', async (req, res) => {
       };
     });
 
-    // Group by type for summary
-    const byType = groupBy(rows, r => r.campaign_type);
-    const prevByType = groupBy(prevRows, r => r.campaign_type);
+    // Type-level summary: when ga4, aggregate from already-merged campaigns
+    // (sums across campaigns of the same type) so the per-type figures match
+    // the table totals; otherwise use the raw Ads aggregation as before.
     const totalSpend = rows.reduce((s, r) => s + r.cost, 0);
 
-    const typeSummary = Object.entries(byType).map(([typeName, typeRows]) => {
-      const cur = aggregateMetrics(typeRows);
-      const prev = aggregateMetrics(prevByType[typeName] || []);
-      return {
-        type: typeName,
-        impressions: cur.impressions,
-        clicks: cur.clicks,
-        ctr: cur.ctr,
-        spend: cur.spend,
-        spend_pct: totalSpend > 0 ? Math.round((cur.spend / totalSpend) * 10000) / 100 : 0,
-        cpc: cur.cpc,
-        conversions: cur.conversions,
-        revenue: cur.revenue,
-        cvr: cur.cvr,
-        aov: cur.aov,
-        roas: cur.roas,
-        delta_impressions: pctChange(cur.impressions, prev.impressions),
-        delta_clicks: pctChange(cur.clicks, prev.clicks),
-        delta_ctr: pctChange(cur.ctr, prev.ctr),
-        delta_spend: pctChange(cur.spend, prev.spend),
-        delta_cpc: pctChange(cur.cpc, prev.cpc),
-        delta_conversions: pctChange(cur.conversions, prev.conversions),
-        delta_revenue: pctChange(cur.revenue, prev.revenue),
-        delta_cvr: pctChange(cur.cvr, prev.cvr),
-        delta_aov: pctChange(cur.aov, prev.aov),
-        delta_roas: pctChange(cur.roas, prev.roas),
-        delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
-      };
-    });
+    let typeSummary;
+    if (dataSource === 'ga4') {
+      const campaignByType = groupBy(campaigns, c => c.type);
+      const curTypeRowsByType = groupBy(rows, r => r.campaign_type);
+      const prevTypeRowsByType = groupBy(prevRows, r => r.campaign_type);
+      const prevByCampaignKey = (n) => prevByCampaign[n] || [];
+      typeSummary = Object.entries(campaignByType).map(([typeName, camps]) => {
+        // Sum cost-side from Ads, conv-side from GA4 (i.e. from the already-merged campaign rows)
+        const sum = (k) => camps.reduce((s, c) => s + (c[k] || 0), 0);
+        const spend = sum('spend');
+        const clicks = sum('clicks');
+        const impressions = sum('impressions');
+        const conversions = sum('conversions');
+        const revenue = sum('revenue');
+
+        // Reconstruct previous from merged: aggregate prev Ads + prev GA4 per campaign
+        const prevAgg = camps.reduce((acc, c) => {
+          const prevAds = aggregateMetrics(prevByCampaignKey(c.campaign_name));
+          const prevMerged = applyGA4Conv(prevAds, ga4PrevByName[c.campaign_name]);
+          acc.spend += prevMerged.spend || 0;
+          acc.revenue += prevMerged.revenue || 0;
+          acc.conversions += prevMerged.conversions || 0;
+          acc.clicks += prevMerged.clicks || 0;
+          acc.impressions += prevMerged.impressions || 0;
+          acc._sessions += (ga4PrevByName[c.campaign_name]?.sessions || 0);
+          return acc;
+        }, { spend: 0, revenue: 0, conversions: 0, clicks: 0, impressions: 0, _sessions: 0 });
+
+        const totalSessions = camps.reduce((s, c) => s + (ga4CurByName[c.campaign_name]?.sessions || 0), 0);
+        const cvr = totalSessions > 0 ? (conversions / totalSessions) * 100 : 0;
+        const aov = conversions > 0 ? revenue / conversions : 0;
+        const roas = spend > 0 ? revenue / spend : 0;
+        const cpc = clicks > 0 ? spend / clicks : 0;
+        const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+
+        const prevCvr = prevAgg._sessions > 0 ? (prevAgg.conversions / prevAgg._sessions) * 100 : 0;
+        const prevAov = prevAgg.conversions > 0 ? prevAgg.revenue / prevAgg.conversions : 0;
+        const prevRoas = prevAgg.spend > 0 ? prevAgg.revenue / prevAgg.spend : 0;
+        const prevCpc = prevAgg.clicks > 0 ? prevAgg.spend / prevAgg.clicks : 0;
+        const prevCtr = prevAgg.impressions > 0 ? (prevAgg.clicks / prevAgg.impressions) * 100 : 0;
+
+        // Impression share is cost-side (from Ads), not affected by GA4
+        const adsCurAgg  = aggregateMetrics(curTypeRowsByType[typeName] || []);
+        const adsPrevAgg = aggregateMetrics(prevTypeRowsByType[typeName] || []);
+
+        return {
+          type: typeName,
+          impressions,
+          clicks,
+          ctr: r2(ctr),
+          spend: r2(spend),
+          spend_pct: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0,
+          cpc: r2(cpc),
+          conversions: Math.round(conversions * 100) / 100,
+          revenue: r2(revenue),
+          cvr: r2(cvr),
+          aov: r2(aov),
+          roas: r2(roas),
+          delta_impressions: pctChange(impressions, prevAgg.impressions),
+          delta_clicks: pctChange(clicks, prevAgg.clicks),
+          delta_ctr: pctChange(ctr, prevCtr),
+          delta_spend: pctChange(spend, prevAgg.spend),
+          delta_cpc: pctChange(cpc, prevCpc),
+          delta_conversions: pctChange(conversions, prevAgg.conversions),
+          delta_revenue: pctChange(revenue, prevAgg.revenue),
+          delta_cvr: pctChange(cvr, prevCvr),
+          delta_aov: pctChange(aov, prevAov),
+          delta_roas: pctChange(roas, prevRoas),
+          delta_impressionShare: pctChange(adsCurAgg.impressionShare, adsPrevAgg.impressionShare),
+        };
+      });
+    } else {
+      const byType = groupBy(rows, r => r.campaign_type);
+      const prevByType = groupBy(prevRows, r => r.campaign_type);
+      typeSummary = Object.entries(byType).map(([typeName, typeRows]) => {
+        const cur = aggregateMetrics(typeRows);
+        const prev = aggregateMetrics(prevByType[typeName] || []);
+        return {
+          type: typeName,
+          impressions: cur.impressions,
+          clicks: cur.clicks,
+          ctr: cur.ctr,
+          spend: cur.spend,
+          spend_pct: totalSpend > 0 ? Math.round((cur.spend / totalSpend) * 10000) / 100 : 0,
+          cpc: cur.cpc,
+          conversions: cur.conversions,
+          revenue: cur.revenue,
+          cvr: cur.cvr,
+          aov: cur.aov,
+          roas: cur.roas,
+          delta_impressions: pctChange(cur.impressions, prev.impressions),
+          delta_clicks: pctChange(cur.clicks, prev.clicks),
+          delta_ctr: pctChange(cur.ctr, prev.ctr),
+          delta_spend: pctChange(cur.spend, prev.spend),
+          delta_cpc: pctChange(cur.cpc, prev.cpc),
+          delta_conversions: pctChange(cur.conversions, prev.conversions),
+          delta_revenue: pctChange(cur.revenue, prev.revenue),
+          delta_cvr: pctChange(cur.cvr, prev.cvr),
+          delta_aov: pctChange(cur.aov, prev.aov),
+          delta_roas: pctChange(cur.roas, prev.roas),
+          delta_impressionShare: pctChange(cur.impressionShare, prev.impressionShare),
+        };
+      });
+    }
 
     campaigns.sort((a, b) => b.spend - a.spend);
     typeSummary.sort((a, b) => b.spend - a.spend);
 
-    res.json({ campaigns, typeSummary });
+    res.json({ campaigns, typeSummary, dataSource });
   } catch (err) {
     console.error('Campaigns error:', err.message);
     res.status(500).json({ error: err.message });
@@ -276,7 +437,7 @@ app.get('/api/campaigns', async (req, res) => {
 // ─── Granularity ───────────────────────────────────────
 app.get('/api/granularity', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity = 'day', includeComarket } = req.query;
+    const { brand = 'ALL', market = 'ALL', from, to, compareTo = 'previous_period', granularity = 'day', includeComarket, dataSource = 'ads' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Missing from/to' });
 
     const comarket = includeComarket === 'true';
@@ -286,6 +447,48 @@ app.get('/api/granularity', async (req, res) => {
 
     const currentSeries = buildTrendSeries(currentRows, granularity);
     const prevSeries = buildTrendSeries(prevRows, granularity);
+
+    // GA4 mode: group GA4 daily rows by same granularity and override conv-side metrics per period
+    const granKeyFn = (dateStr) => {
+      if (granularity === 'month') return dateStr.slice(0, 7);
+      if (granularity === 'week') {
+        const d = new Date(dateStr);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d);
+        monday.setDate(diff);
+        return fmtDate(monday);
+      }
+      return dateStr;
+    };
+    let curGA4Map = {}, prevGA4Map = {};
+    if (dataSource === 'ga4') {
+      const [g4Cur, g4Prev] = await Promise.all([
+        getGA4Rows({ brand, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        getGA4Rows({ brand, market, from: compFrom, to: compTo, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+      ]);
+      const groupGA4 = (rows) => {
+        const acc = {};
+        for (const r of rows) {
+          const k = granKeyFn(r.date);
+          if (!acc[k]) acc[k] = { sessions: 0, transactions: 0, revenue: 0 };
+          acc[k].sessions += r.sessions || 0;
+          acc[k].transactions += r.transactions || 0;
+          acc[k].revenue += r.revenue || 0;
+        }
+        return acc;
+      };
+      curGA4Map = groupGA4(g4Cur);
+      prevGA4Map = groupGA4(g4Prev);
+      currentSeries.forEach((item, i) => {
+        const merged = applyGA4Conv(item, curGA4Map[item.date]);
+        currentSeries[i] = { ...item, ...merged };
+      });
+      prevSeries.forEach((item, i) => {
+        const merged = applyGA4Conv(item, prevGA4Map[item.date]);
+        prevSeries[i] = { ...item, ...merged };
+      });
+    }
 
     // Build a map of previous period data by index
     const result = currentSeries.map((item, i) => {
@@ -335,10 +538,12 @@ app.get('/api/budget', async (req, res) => {
     // Map brand param
     const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
                      : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
+                     : brand === 'LASANTE' || brand === 'LaSante.net' ? 'LaSante.net'
                      : 'Cocooncenter';
-    
+
     const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
                       : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
+                      : brandLabel === 'LaSante.net' ? 'LASANTE'
                       : 'PASCAL_COSTE';
 
     const isPascalCoste = adsBrandKey === 'PASCAL_COSTE';
@@ -538,9 +743,11 @@ app.get('/api/budget/recommendations', async (req, res) => {
 
     const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
                      : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
+                     : brand === 'LASANTE' || brand === 'LaSante.net' ? 'LaSante.net'
                      : 'Cocooncenter';
     const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
                       : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
+                      : brandLabel === 'LaSante.net' ? 'LASANTE'
                       : 'PASCAL_COSTE';
 
     // Get pacing data for all markets (needed for budget/projection signals)
@@ -787,11 +994,11 @@ const YTD_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/trend/ytd', async (req, res) => {
   try {
-    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket, onlyComarket, partnerBrand } = req.query;
+    const { brand = 'ALL', market = 'ALL', granularity = 'week', includeComarket, onlyComarket, partnerBrand, dataSource = 'ads' } = req.query;
     const comarket = includeComarket === 'true' || onlyComarket === 'true';
     const isOnlyComarket = onlyComarket === 'true';
-    
-    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}|${isOnlyComarket}|${partnerBrand || 'ALL'}`;
+
+    const cacheKey = `ytd|${brand}|${market}|${granularity}|${comarket}|${isOnlyComarket}|${partnerBrand || 'ALL'}|${dataSource}`;
 
     const cached = ytdCache.get(cacheKey);
     if (cached && (Date.now() - cached.ts) < YTD_CACHE_TTL) {
@@ -814,6 +1021,31 @@ app.get('/api/trend/ytd', async (req, res) => {
 
     const series = buildTrendSeries(rows, granularity);
 
+    // GA4 mode: fetch GA4 daily rows YTD and group by same granularity to override conv-side metrics
+    let ga4Map = {};
+    if (dataSource === 'ga4') {
+      const g4Rows = await getGA4Rows({ brand, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM });
+      const granKeyFn = (dateStr) => {
+        if (granularity === 'month') return dateStr.slice(0, 7);
+        if (granularity === 'week') {
+          const d = new Date(dateStr);
+          const day = d.getDay();
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+          const monday = new Date(d);
+          monday.setDate(diff);
+          return fmtDate(monday);
+        }
+        return dateStr;
+      };
+      for (const r of g4Rows) {
+        const k = granKeyFn(r.date);
+        if (!ga4Map[k]) ga4Map[k] = { sessions: 0, transactions: 0, revenue: 0 };
+        ga4Map[k].sessions += r.sessions || 0;
+        ga4Map[k].transactions += r.transactions || 0;
+        ga4Map[k].revenue += r.revenue || 0;
+      }
+    }
+
     const FR_MONTHS = ['jan', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
 
     const result = series.map(item => {
@@ -834,19 +1066,21 @@ app.get('/api/trend/ytd', async (req, res) => {
         label = `${d.getDate()} ${FR_MONTHS[d.getMonth()]}`;
       }
 
+      const merged = dataSource === 'ga4' ? applyGA4Conv(item, ga4Map[item.date]) : item;
+
       return {
         period,
         label,
-        cost:        r2(item.spend),
-        clicks:      item.clicks,
-        impressions: item.impressions,
-        conversions: r2(item.conversions),
-        revenue:     r2(item.revenue),
-        roas:        r2(item.roas),
-        cpc:         r2(item.cpc),
-        cvr:         r2(item.cvr),
-        ctr:         r2(item.ctr),
-        aov:         r2(item.aov),
+        cost:        r2(merged.spend),
+        clicks:      merged.clicks,
+        impressions: merged.impressions,
+        conversions: r2(merged.conversions),
+        revenue:     r2(merged.revenue),
+        roas:        r2(merged.roas),
+        cpc:         r2(merged.cpc),
+        cvr:         r2(merged.cvr),
+        ctr:         r2(merged.ctr),
+        aov:         r2(merged.aov),
       };
     });
 
@@ -882,9 +1116,11 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
                      : brand === 'COCOONCENTER'            ? 'Cocooncenter'
                      : brand === 'PASCAL_COSTE'            ? 'Pascal Coste Shopping'
+                     : brand === 'LASANTE'                 ? 'LaSante.net'
                      : brand;
     const adsBrandKey = brandLabel === 'Cocooncenter'            ? 'COCOONCENTER'
                       : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
+                      : brandLabel === 'LaSante.net'             ? 'LASANTE'
                       : 'PASCAL_COSTE';
     const isPCS = adsBrandKey === 'PASCAL_COSTE';
 
@@ -1102,16 +1338,23 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }
 const server = app.listen(PORT, () => {
   console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
   initCacheWarmer();
+  initScheduler();
 });
 
 app.post('/api/system/reboot', (req, res) => {
   console.log('Reboot requested from dashboard...');
   res.json({ message: 'Rebooting...' });
-  // Exit 42 is the signal for run.js wrapper to restart. nodemon also restarts on exit.
-  // If neither wrapper is in place, the process just stops.
+  // Exit 42 is the signal for PM2 / nodemon to restart.
+  // server.close() waits for all in-flight connections — long MC API calls or
+  // HTTP keepalives can hang it forever, so we force-exit after 2s.
   setTimeout(() => {
+    const forceExit = setTimeout(() => {
+      console.log('Reboot: force-exiting (server.close hung)');
+      process.exit(42);
+    }, 2000);
     server.close(() => {
-      setTimeout(() => process.exit(42), 200);
+      clearTimeout(forceExit);
+      process.exit(42);
     });
   }, 300);
 });

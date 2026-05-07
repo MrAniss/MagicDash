@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { isAuthenticated } from '../auth.js';
 import {
   getPaidSocialRows,
   getPaidSocialBreakdown,
@@ -13,6 +14,12 @@ import { isMetaConfigured, getMetaAds } from '../metaAdsClient.js';
 import { getMetaSupportedMarkets } from '../config/paidSocialAccounts.js';
 
 const router = Router();
+
+// Gate all paid-social routes behind Google OAuth (consistent with the rest of the API).
+router.use((req, res, next) => {
+  if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  next();
+});
 
 // Phase 1 hard scope. The frontend toggle is disabled for anything else, but
 // keep a guard in case someone hits the API directly.
@@ -276,7 +283,11 @@ router.get('/status', (_req, res) => {
 // ─── GET /api/paid-social/diagnose ────────────────────────
 // Surfaces the actual Meta API error from inside the running process so we
 // can debug token / permission issues without tailing logs.
+// DEV ONLY — disabled in production because the response leaks a token preview.
 router.get('/diagnose', async (_req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
   const token = process.env.META_ACCESS_TOKEN || '';
   const accountId = process.env.META_AD_ACCOUNT_ID || '';
   const v = process.env.META_API_VERSION || 'v21.0';

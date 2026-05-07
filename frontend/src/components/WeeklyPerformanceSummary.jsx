@@ -12,8 +12,8 @@ import {
   LabelList,
 } from 'recharts';
 
-export default function WeeklyPerformanceSummary({ brand, market }) {
-  const { data, isLoading, isError } = useWeeklySummary({ brand, market });
+export default function WeeklyPerformanceSummary({ brand, market, dataSource = 'ads' }) {
+  const { data, isLoading, isError } = useWeeklySummary({ brand, market, dataSource });
 
   if (isLoading)
     return (

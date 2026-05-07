@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { fEur } from '../utils/formatters';
 import { marketName } from '../utils/flags';
-import { API_URL } from '../utils/api';
+import { API_URL, authFetch } from '../utils/api';
 import { useComarket } from '../contexts/ComarketContext';
 import { CHART } from '../utils/chartColors';
 
@@ -67,7 +67,7 @@ async function fetchDailySpend(brand, market, year, includeComarket) {
   url.searchParams.set('market', market);
   url.searchParams.set('year', year);
   url.searchParams.set('includeComarket', includeComarket);
-  const res = await fetch(url);
+  const res = await authFetch(url);
   if (!res.ok) throw new Error('Daily spend API error');
   return res.json();
 }

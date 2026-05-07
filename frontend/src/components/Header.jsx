@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStatus } from '../hooks/useAdsData';
+import { useAuth } from '../contexts/AuthContext';
 import { useComarket } from '../contexts/ComarketContext';
 import { getPresetRange } from '../utils/dateHelpers';
-import { API_URL } from '../utils/api';
+import { API_URL, authFetch } from '../utils/api';
 import { FlagIcon, marketName } from '../utils/flags';
 
 const BRAND_TABS = [
   { key: 'COCOONCENTER', label: 'Cocooncenter' },
   { key: 'PASCAL_COSTE', label: 'Pascal Coste' },
   { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Para. Lafayette' },
+  { key: 'LASANTE', label: 'LaSante.net' },
 ];
 
 const MARKETS_BY_BRAND = {
@@ -61,6 +63,7 @@ const MARKETS_BY_BRAND = {
   ],
   PASCAL_COSTE: ['ALL', 'FR'],
   PARAPHARMACIE_LAFAYETTE: ['ALL', 'FR'],
+  LASANTE: ['ALL', 'FR'],
 };
 
 function getAvailableMarkets(brand) {
@@ -71,6 +74,7 @@ const VIEW_TABS = [
   { key: 'dashboard', label: 'Paid Search' },
   { key: 'paid-social', label: 'Paid Social' },
   { key: 'analytics', label: 'Analytics' },
+  { key: 'feed-monitor', label: 'Feed Monitor' },
 ];
 
 const PRESETS = [
@@ -169,13 +173,14 @@ function MarketDropdown({ value, onChange, markets }) {
 export default function Header({ filters, onFiltersChange, activeView, onViewChange }) {
   const { data: authData } = useAuthStatus();
   const authenticated = authData?.authenticated;
+  const { user, logout } = useAuth();
   const { includeComarket, setIncludeComarket } = useComarket();
   const queryClient = useQueryClient();
   const [refreshState, setRefreshState] = useState('idle'); // idle | loading | success
   const [rebootState, setRebootState] = useState('idle'); // idle | loading | success
 
   function handleBrand(brand) {
-    onFiltersChange({ ...filters, brand, market: 'ALL' });
+    onFiltersChange({ ...filters, brand, market: 'FR' });
   }
 
   function handleMarket(market) {
@@ -199,7 +204,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
     if (refreshState === 'loading') return;
     setRefreshState('loading');
     try {
-      await fetch(`${API_URL}/api/cache/clear`, { method: 'POST' });
+      await authFetch(`${API_URL}/api/cache/clear`, { method: 'POST' });
       await queryClient.invalidateQueries();
       setRefreshState('success');
       setTimeout(() => setRefreshState('idle'), 2000);
@@ -216,7 +221,7 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
       return;
     setRebootState('loading');
     try {
-      await fetch(`${API_URL}/api/system/reboot`, { method: 'POST' });
+      await authFetch(`${API_URL}/api/system/reboot`, { method: 'POST' });
       setRebootState('success');
       setTimeout(() => window.location.reload(), 2000);
     } catch {
@@ -334,6 +339,24 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
               >
                 Connecter Google Ads
               </a>
+            )}
+
+            {user && (
+              <div className="flex items-center gap-2 pl-2 ml-1 border-l border-border">
+                <span className="text-xs text-navy-muted" title={user.email}>
+                  {user.name || user.email}
+                </span>
+                <button
+                  onClick={logout}
+                  className="p-1 rounded-inner border border-border text-navy-muted hover:text-danger hover:border-danger transition-colors"
+                  title="Se déconnecter"
+                  aria-label="Se déconnecter"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
             )}
           </div>
         </div>

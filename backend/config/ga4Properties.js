@@ -12,6 +12,7 @@ export const GA4_PROPERTIES = {
   COCOONCENTER:            readProp('GA4_PROPERTY_COCOONCENTER'),
   PASCAL_COSTE:            readProp('GA4_PROPERTY_PASCAL_COSTE'),
   PARAPHARMACIE_LAFAYETTE: readProp('GA4_PROPERTY_PARAPHARMACIE_LAFAYETTE'),
+  LASANTE:                 readProp('GA4_PROPERTY_LASANTE'),
 };
 
 // Market → env var. Several markets are intentionally routed through the

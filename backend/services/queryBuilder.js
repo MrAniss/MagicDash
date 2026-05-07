@@ -72,6 +72,13 @@ function getAccountsForIntent(brandKey, market) {
     }
   }
 
+  if (brandKey === 'ALL' || brandKey === 'LASANTE') {
+    const acc = BRANDS.LASANTE.accounts[0];
+    if (acc && (!market || market === 'ALL' || market === 'FR')) {
+      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'LASANTE', brandLabel: 'LaSante.net' });
+    }
+  }
+
   return accounts;
 }
 
@@ -139,7 +146,7 @@ async function executeGoogleAdsQuery(intent) {
   );
 
   const rows = results.flat();
-  // If all accounts returned empty AND there was an error, throw so Gemini can retry
+  // If all accounts returned empty AND there was an error, throw so the caller can retry/surface it
   if (rows.length === 0 && firstError) {
     throw new Error(`Google Ads API error: ${firstError}`);
   }
@@ -158,6 +165,7 @@ function buildStreamFilter(brandKey, market) {
 
   const brandName = brandKey === 'COCOONCENTER' ? 'Cocooncenter'
     : brandKey === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
+    : brandKey === 'LASANTE' ? 'LaSante.net'
     : 'Parapharmacie Lafayette';
 
   const streamId = GA4_STREAMS[brandName]?.[market];

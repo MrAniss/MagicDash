@@ -2,14 +2,35 @@ import { Router } from 'express';
 import { getRows } from '../googleAdsClient.js';
 import { aggregateMetrics, groupBy } from '../aggregation.js';
 import { isAuthenticated } from '../auth.js';
+import { getGA4Kpis, getGA4ByCampaign } from '../ga4Client.js';
 
 const router = Router();
+
+const GA4_SEA_SOURCE_MEDIUM = 'google / cpc';
+
+function r2(v) { return Math.round((v || 0) * 100) / 100; }
+
+function applyGA4ConvLocal(adsAgg, ga4Agg) {
+  if (!ga4Agg) return adsAgg;
+  const transactions = ga4Agg.transactions || 0;
+  const revenue = ga4Agg.revenue || 0;
+  const sessions = ga4Agg.sessions || 0;
+  const spend = adsAgg.spend || 0;
+  return {
+    ...adsAgg,
+    conversions: Math.round(transactions * 100) / 100,
+    revenue: r2(revenue),
+    cvr: sessions > 0 ? r2((transactions / sessions) * 100) : 0,
+    aov: transactions > 0 ? r2(revenue / transactions) : 0,
+    roas: spend > 0 ? r2(revenue / spend) : 0,
+  };
+}
 
 router.get('/weekly-summary', async (req, res) => {
   if (!isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
-    const { brand = 'ALL', market = 'ALL' } = req.query;
+    const { brand = 'ALL', market = 'ALL', dataSource = 'ads' } = req.query;
 
     // 1. Calculate periods
     const now = new Date();
@@ -83,6 +104,52 @@ router.get('/weekly-summary', async (req, res) => {
       drilldownW_N1 = groupByMarket(rowsW_N1);
     }
 
+    // ── GA4 reconciliation ─────────────────────────────
+    // When dataSource === 'ga4', overlay GA4 conv-side metrics on each
+    // drill-down bucket (campaign or market) and on the global aggregate
+    // for the 3 periods (current, previous, last year).
+    if (dataSource === 'ga4') {
+      const fetchGA4Drill = async (from, to) => {
+        if (useCampaignGranularity) {
+          const list = await getGA4ByCampaign({ brand, market, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM });
+          const map = {};
+          for (const r of list) map[r.campaignName] = r;
+          return map;
+        }
+        // Per-market granularity: fetch GA4 KPIs per (brand, market) seen in Ads rows
+        // Since `brand` may be 'ALL', we need to iterate over (brand, market) pairs
+        // present in the Ads result for this period. Safer: derive from rowsW unions.
+        const adsRowsForPeriod = await getRows({ brand, market, from, to, includeComarket: true });
+        const pairs = new Set(adsRowsForPeriod.map(r => `${r.brand}|${r.market}`));
+        const map = {};
+        await Promise.all([...pairs].map(async (pair) => {
+          const [bKey, mkt] = pair.split('|');
+          const k = await getGA4Kpis({ brand: bKey, market: mkt, from, to, sourceMedium: GA4_SEA_SOURCE_MEDIUM });
+          // groupByMarket keys by market name, so aggregate across brands sharing a market
+          if (!map[mkt]) map[mkt] = { sessions: 0, transactions: 0, revenue: 0 };
+          map[mkt].sessions += k.sessions || 0;
+          map[mkt].transactions += k.transactions || 0;
+          map[mkt].revenue += k.revenue || 0;
+        }));
+        return map;
+      };
+
+      const [ga4W, ga4W1, ga4W_N1] = await Promise.all([
+        fetchGA4Drill(periods.current.from, periods.current.to),
+        fetchGA4Drill(periods.previous.from, periods.previous.to),
+        fetchGA4Drill(periods.lastYear.from, periods.lastYear.to),
+      ]);
+
+      const overlay = (drill, ga4Map) => {
+        for (const k of Object.keys(drill)) {
+          drill[k] = applyGA4ConvLocal(drill[k], ga4Map[k]);
+        }
+      };
+      overlay(drilldownW, ga4W);
+      overlay(drilldownW1, ga4W1);
+      overlay(drilldownW_N1, ga4W_N1);
+    }
+
     const allKeys = Array.from(new Set([
       ...Object.keys(drilldownW),
       ...Object.keys(drilldownW1),
@@ -110,6 +177,18 @@ router.get('/weekly-summary', async (req, res) => {
       previous: aggregateMetrics(rowsW1),
       lastYear: aggregateMetrics(rowsW_N1),
     };
+
+    if (dataSource === 'ga4') {
+      const [g4W, g4W1, g4W_N1] = await Promise.all([
+        getGA4Kpis({ brand, market, from: periods.current.from, to: periods.current.to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        getGA4Kpis({ brand, market, from: periods.previous.from, to: periods.previous.to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+        getGA4Kpis({ brand, market, from: periods.lastYear.from, to: periods.lastYear.to, sourceMedium: GA4_SEA_SOURCE_MEDIUM }),
+      ]);
+      global.current  = applyGA4ConvLocal(global.current,  g4W);
+      global.previous = applyGA4ConvLocal(global.previous, g4W1);
+      global.lastYear = applyGA4ConvLocal(global.lastYear, g4W_N1);
+    }
+
     global.deltasW1 = computeDeltas(global.current, global.previous);
     global.deltasLY = computeDeltas(global.current, global.lastYear);
 
@@ -121,7 +200,8 @@ router.get('/weekly-summary', async (req, res) => {
       global,
       reports,
       insights,
-      granularity: useCampaignGranularity ? 'campaign' : 'market'
+      granularity: useCampaignGranularity ? 'campaign' : 'market',
+      dataSource,
     });
 
   } catch (err) {

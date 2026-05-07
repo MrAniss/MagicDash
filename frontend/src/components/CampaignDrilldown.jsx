@@ -117,7 +117,7 @@ function TypeBadge({ type, color }) {
   );
 }
 
-export default function CampaignDrilldown({ filters }) {
+export default function CampaignDrilldown({ filters, dataSource = 'ads' }) {
   const [activeType, setActiveType] = useState(null);
   const [sortCol, setSortCol] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
@@ -132,6 +132,7 @@ export default function CampaignDrilldown({ filters }) {
     to: filters.to,
     type: 'ALL',
     compareTo: filters.compareTo,
+    dataSource,
   });
 
   if (isLoading || !data) return <Skeleton />;

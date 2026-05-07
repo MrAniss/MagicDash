@@ -25,6 +25,7 @@ import {
   fCompact,
   fEurCompact,
 } from '../utils/formatters';
+import { CHART } from '../utils/chartColors';
 import AccordionSection from './AccordionSection';
 
 // Phase 1 hard scope. The toggle exposes TikTok / Combiné as locked tabs but
@@ -64,9 +65,9 @@ const KPI_CONFIG = [
   { key: 'ctr',         label: 'CTR',         format: (v) => (v != null ? v.toFixed(2) + '%' : '—'), deltaKey: 'ctr_pct', accent: '#D4537E' },
   { key: 'cost',        label: 'COÛT',        format: fEurCompact,                                deltaKey: 'cost_pct',        accent: '#378ADD', neutral: true },
   { key: 'cpc',         label: 'CPC',         format: (v) => fEur(v, true),                       deltaKey: 'cpc_pct',         accent: '#F59E0B', invert: true },
-  { key: 'conversions', label: 'CONVERSIONS', format: fCompact,                                   deltaKey: 'conversions_pct', accent: '#F5A623' },
+  { key: 'conversions', label: 'CONVERSIONS', format: fCompact,                                   deltaKey: 'conversions_pct', accent: CHART.warning },
   { key: 'revenue',     label: 'REVENUE',     format: fEurCompact,                                deltaKey: 'revenue_pct',     accent: '#00E89A' },
-  { key: 'roas',        label: 'ROAS',        format: fROAS,                                       deltaKey: 'roas_pct',        accent: '#00B87A' },
+  { key: 'roas',        label: 'ROAS',        format: fROAS,                                       deltaKey: 'roas_pct',        accent: CHART.success },
 ];
 
 function MetaBadge() {
@@ -230,7 +231,7 @@ function TrendChart({ filters, platform, scope }) {
             style={{ color: '#1877F2', borderColor: '#1877F233' }}
           >
             {TREND_KPIS.map((k) => (
-              <option key={k.value} value={k.value} style={{ color: '#1A2E4A' }}>
+              <option key={k.value} value={k.value} style={{ color: CHART.navy }}>
                 {k.label}
               </option>
             ))}
@@ -244,11 +245,11 @@ function TrendChart({ filters, platform, scope }) {
         <ResponsiveContainer width="100%" height={280}>
           <ComposedChart data={series} margin={{ top: 5, right: 55, bottom: 5, left: 55 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,46,74,0.07)" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: '#8896B0', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis yAxisId="left" tick={{ fill: '#8896B0', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fEurCompact} width={52} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fill: '#8896B0', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={kpiOption.axisFormat} width={52} />
+            <XAxis dataKey="date" tick={{ fill: CHART.navyMuted, fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis yAxisId="left" tick={{ fill: CHART.navyMuted, fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fEurCompact} width={52} />
+            <YAxis yAxisId="right" orientation="right" tick={{ fill: CHART.navyMuted, fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={kpiOption.axisFormat} width={52} />
             <Tooltip content={<TrendTooltip kpiOption={kpiOption} />} cursor={{ fill: 'rgba(26,46,74,0.04)' }} />
-            <Bar yAxisId="left" dataKey="cost" name="Coût" fill="#1A2E4A" radius={[3, 3, 0, 0]} maxBarSize={36} />
+            <Bar yAxisId="left" dataKey="cost" name="Coût" fill={CHART.navy} radius={[3, 3, 0, 0]} maxBarSize={36} />
             <Line yAxisId="right" type="monotone" dataKey={selectedKpi} name={kpiOption.label} stroke="#1877F2" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#1877F2', stroke: '#fff', strokeWidth: 2 }} />
           </ComposedChart>
         </ResponsiveContainer>
@@ -309,7 +310,7 @@ function CreativeThumb({ creative, ad_name, size = 'md' }) {
         style={{ width: dim, height: dim }}
         className="bg-bg-page border border-border rounded-card flex items-center justify-center text-navy-muted text-[10px]"
       >
-        Pas d'aperçu
+        Pas d&apos;aperçu
       </div>
     );
   }
@@ -478,7 +479,7 @@ function CreativeModal({ ad, onClose }) {
           </div>
           <div className="flex flex-col gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-navy-muted mb-1">Nom de l'ad</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-navy-muted mb-1">Nom de l&apos;ad</p>
               <p className="text-[13px] text-navy">{ad.ad_name}</p>
             </div>
             {ad.creative?.title && (
@@ -864,7 +865,7 @@ function WinnersLoserCard({ kind, items, isLoading, threshold }) {
         ) : !items?.length ? (
           <div className="px-4 py-10 text-center text-xs text-navy-muted italic">Pas assez de spend pour ranker.</div>
         ) : items.map((s, i) => {
-          const dimColor = DIM_PALETTE[s.dimension_label] || '#1A2E4A';
+          const dimColor = DIM_PALETTE[s.dimension_label] || CHART.navy;
           return (
             <div key={i} className="px-4 py-3 flex items-center gap-3">
               <span
@@ -912,7 +913,7 @@ function WinnersLosersHero({ filters, platform, scope }) {
 
 // ─── Per-dimension tabs (enriched) ────────────────────────
 
-const DIM_COLORS = ['#1877F2', '#00B87A', '#F59E0B', '#D4537E', '#7F77DD', '#60A5FA', '#0EA5E9', '#84CC16', '#F97316'];
+const DIM_COLORS = ['#1877F2', CHART.success, '#F59E0B', '#D4537E', '#7F77DD', '#60A5FA', '#0EA5E9', '#84CC16', '#F97316'];
 
 function SegmentDonut({ segments }) {
   const slices = segments

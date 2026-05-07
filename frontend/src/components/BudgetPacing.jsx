@@ -4,7 +4,7 @@ import { getCurrentMonth } from '../utils/dateHelpers';
 import { fEur, fNum, fROAS, fAov, fDelta, fEurInt } from '../utils/formatters';
 import { MarketLabel, marketName } from '../utils/flags';
 import BudgetDailyChart from './BudgetDailyChart';
-import { API_URL } from '../utils/api';
+import { API_URL, authFetch } from '../utils/api';
 import { useComarket } from '../contexts/ComarketContext';
 
 const BRAND_OPTIONS = [
@@ -48,7 +48,7 @@ async function fetchBudget(brand, market, month, compareTo, includeComarket) {
   url.searchParams.set('month', month);
   url.searchParams.set('compareTo', compareTo);
   url.searchParams.set('includeComarket', includeComarket);
-  const res = await fetch(url);
+  const res = await authFetch(url);
   if (!res.ok) throw new Error('Budget API error');
   return res.json();
 }

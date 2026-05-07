@@ -217,7 +217,10 @@ export async function getMetaBreakdown({ brand, market, from, to, dimension }) {
 }
 
 export function isMetaConfigured() {
-  return Boolean(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID);
+  if (!process.env.META_ACCESS_TOKEN) return false;
+  // Accept either the legacy single-account env var or any per-market variant.
+  if (process.env.META_AD_ACCOUNT_ID) return true;
+  return Object.keys(process.env).some(k => k.startsWith('META_AD_ACCOUNT_ID_') && process.env[k]);
 }
 
 

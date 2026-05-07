@@ -10,10 +10,13 @@ import ComarketView from './components/ComarketView';
 import GA4View from './components/GA4View';
 import ShoppingView from './components/ShoppingView';
 import PaidSocialView from './components/PaidSocialView';
+import FeedMonitorView from './components/FeedMonitorView';
 import WeeklyPerformanceSummary from './components/WeeklyPerformanceSummary';
 import AccordionSection from './components/AccordionSection';
 import TopProgressBar from './components/TopProgressBar';
+import LoginScreen from './components/LoginScreen';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
+import { useAuth } from './contexts/AuthContext';
 import { getPresetRange } from './utils/dateHelpers';
 
 const STORAGE_KEY = 'sea_dashboard_filters';
@@ -28,7 +31,7 @@ function loadFilters() {
   const range = getPresetRange('last_week');
   return {
     brand: 'ALL',
-    market: 'ALL',
+    market: 'FR',
     preset: 'last_week',
     compareTo: 'previous_period',
     ...range,
@@ -42,18 +45,34 @@ const PAID_SEARCH_SUBTABS = [
   { key: 'shopping', label: 'Shopping' },
 ];
 
+const PAID_SEARCH_SOURCES = [
+  { key: 'ads', label: 'Google Ads' },
+  { key: 'ga4', label: 'GA4' },
+];
+
 export default function App() {
+  // TODO AUTH — décommenter pour activer le gate de connexion (nécessite users.json rempli côté backend)
+  // const { isAuthenticated } = useAuth();
+  // if (!isAuthenticated) {
+  //   return <LoginScreen />;
+  // }
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const [filters, setFilters] = useState(loadFilters);
   const [activeView, setActiveView] = useState('dashboard');
   const [paidSearchTab, setPaidSearchTab] = useState('overview');
+  // Not persisted — always defaults to Google Ads on each session
+  const [paidSearchSource, setPaidSearchSource] = useState('ads');
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
   }, [filters]);
 
   const { data: modeData } = useDemoMode();
   const dataSource = modeData?.source;
-  const kpis = useKpis(filters);
-  const markets = useMarkets(filters);
+  const kpis = useKpis({ ...filters, dataSource: paidSearchSource });
+  const markets = useMarkets({ ...filters, dataSource: paidSearchSource });
 
   return (
     <div className="min-h-screen bg-bg-page flex flex-col">
@@ -94,20 +113,45 @@ export default function App() {
 
         {activeView === 'dashboard' && (
           <>
-            <div className="flex items-center gap-1 bg-white border border-border rounded-card shadow-sm p-1 w-fit">
-              {PAID_SEARCH_SUBTABS.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setPaidSearchTab(t.key)}
-                  className={`px-4 py-1.5 text-xs font-medium rounded-inner transition-colors ${
-                    paidSearchTab === t.key
-                      ? 'bg-navy text-white'
-                      : 'text-navy-muted hover:text-navy hover:bg-bg-page'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1 bg-white border border-border rounded-card shadow-sm p-1 w-fit">
+                {PAID_SEARCH_SUBTABS.map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => setPaidSearchTab(t.key)}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-inner transition-colors ${
+                      paidSearchTab === t.key
+                        ? 'bg-navy text-white'
+                        : 'text-navy-muted hover:text-navy hover:bg-bg-page'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {paidSearchTab === 'overview' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-navy-muted uppercase tracking-wider font-medium">
+                    Source data business
+                  </span>
+                  <div className="flex items-center gap-1 bg-white border border-border rounded-card shadow-sm p-1">
+                    {PAID_SEARCH_SOURCES.map((s) => (
+                      <button
+                        key={s.key}
+                        onClick={() => setPaidSearchSource(s.key)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-inner transition-colors ${
+                          paidSearchSource === s.key
+                            ? 'bg-navy text-white'
+                            : 'text-navy-muted hover:text-navy hover:bg-bg-page'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {paidSearchTab === 'overview' && (
@@ -117,16 +161,20 @@ export default function App() {
                   badge="Insights"
                   isOpenDefault={false}
                 >
-                  <WeeklyPerformanceSummary brand={filters.brand} market={filters.market} />
+                  <WeeklyPerformanceSummary
+                    brand={filters.brand}
+                    market={filters.market}
+                    dataSource={paidSearchSource}
+                  />
                 </AccordionSection>
 
                 <KpiCards data={kpis.data} isLoading={kpis.isLoading} />
-                <CostKpiChart filters={filters} />
-                <GranularityTable filters={filters} />
+                <CostKpiChart filters={filters} dataSource={paidSearchSource} />
+                <GranularityTable filters={filters} dataSource={paidSearchSource} />
                 <MarketTable data={markets.data} isLoading={markets.isLoading} />
 
                 <AccordionSection title="Détail des Campagnes Paid Search" badge="Détail">
-                  <CampaignDrilldown filters={filters} />
+                  <CampaignDrilldown filters={filters} dataSource={paidSearchSource} />
                 </AccordionSection>
               </>
             )}
@@ -142,6 +190,8 @@ export default function App() {
         {activeView === 'shopping' && <ShoppingView filters={filters} />}
 
         {activeView === 'paid-social' && <PaidSocialView filters={filters} />}
+
+        {activeView === 'feed-monitor' && <FeedMonitorView filters={filters} />}
       </main>
 
       <footer className="mt-auto py-5 text-center border-t border-border">

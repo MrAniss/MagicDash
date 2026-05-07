@@ -20,6 +20,7 @@ const WARM_TARGETS = [
   { brand: 'COCOONCENTER',           market: 'FR'  },
   { brand: 'PASCAL_COSTE',           market: 'FR'  },
   { brand: 'PARAPHARMACIE_LAFAYETTE', market: 'FR' },
+  { brand: 'LASANTE',                market: 'FR' },
 ];
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h

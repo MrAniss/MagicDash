@@ -1,10 +1,33 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useGA4Kpis, useGA4Channels, useKpis } from '../hooks/useAdsData';
-import { fEur, fNum, fPct, fDelta, fAov, fEurCompact, fROAS } from '../utils/formatters';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
+import {
+  useGA4Kpis,
+  useGA4Channels,
+  useKpis,
+  useGA4TrendYtd,
+  useTrendYtd,
+} from '../hooks/useAdsData';
+import { fEur, fNum, fPct, fDelta, fAov, fEurCompact, fROAS, fCompact } from '../utils/formatters';
 import BounceRateChart from './BounceRateChart';
 import FunnelChart from './FunnelChart';
 import GA4CostKpiChart from './GA4CostKpiChart';
 import GA4MarketTable from './GA4MarketTable';
+
+// ─── Date label helpers (chart) ─────────────────────────
+const MONTHS_SHORT = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+
+function dayLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+}
 
 // ─── KPI config for GA4 scorecards ─────────────────────
 const GA4_KPI_CONFIG = [
@@ -312,10 +335,204 @@ function GA4KpiCards({ data, isLoading, adsData, sourceMedium }) {
   );
 }
 
+// ─── Reconciliation: Conversions evolution chart ───────
+const RECON_GRANULARITIES = [
+  { value: 'day', label: 'Jour' },
+  { value: 'week', label: 'Semaine' },
+];
+
+function ReconciliationConvTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  const ga4Val = payload.find((p) => p.dataKey === 'ga4')?.value;
+  const adsVal = payload.find((p) => p.dataKey === 'ads')?.value;
+  const gap = adsVal > 0 ? ((ga4Val - adsVal) / adsVal) * 100 : null;
+  const gapColor =
+    gap == null
+      ? 'text-navy-muted'
+      : Math.abs(gap) > 20
+        ? 'text-danger'
+        : Math.abs(gap) > 10
+          ? 'text-warning'
+          : 'text-success';
+
+  return (
+    <div className="bg-white border border-border rounded-xl px-4 py-3 shadow-lg text-[12px] min-w-[200px]">
+      <p className="font-semibold text-navy mb-2 text-[13px]">{row?.label || row?.period}</p>
+      <div className="space-y-1">
+        <p className="flex justify-between gap-4">
+          <span className="text-navy-muted">Conv. GA4 (google/cpc)</span>
+          <span className="font-medium" style={{ color: '#378ADD' }}>
+            {fNum(ga4Val)}
+          </span>
+        </p>
+        <p className="flex justify-between gap-4">
+          <span className="text-navy-muted">Conv. Google Ads</span>
+          <span className="font-medium" style={{ color: '#1A2E4A' }}>
+            {fNum(adsVal)}
+          </span>
+        </p>
+        {gap != null && (
+          <p className="flex justify-between gap-4 border-t border-border pt-1 mt-1">
+            <span className="text-navy-muted">Écart</span>
+            <span className={`font-medium ${gapColor}`}>
+              {gap >= 0 ? '+' : ''}
+              {gap.toFixed(1)}%
+            </span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function periodTick(period, granularity) {
+  if (!period) return '';
+  if (granularity === 'week') {
+    const m = period.match(/W(\d+)/);
+    return m ? `S${m[1].padStart(2, '0')}` : period;
+  }
+  return dayLabel(period);
+}
+
+function ReconciliationConvChart({ filters }) {
+  const [granularity, setGranularity] = useState('week');
+
+  const ga4 = useGA4TrendYtd({
+    brand: filters.brand,
+    market: filters.market,
+    granularity,
+    sourceMedium: 'google / cpc',
+  });
+
+  const ads = useTrendYtd({
+    brand: filters.brand,
+    market: filters.market,
+    granularity,
+  });
+
+  const data = useMemo(() => {
+    const byPeriod = {};
+    if (ga4.data) {
+      for (const row of ga4.data) {
+        if (!row?.period) continue;
+        if (!byPeriod[row.period])
+          byPeriod[row.period] = { period: row.period, label: row.label, ga4: 0, ads: 0 };
+        byPeriod[row.period].ga4 = row.transactions || 0;
+      }
+    }
+    if (ads.data) {
+      for (const row of ads.data) {
+        const key = row?.period;
+        if (!key) continue;
+        if (!byPeriod[key]) byPeriod[key] = { period: key, label: row.label, ga4: 0, ads: 0 };
+        // Prefer Ads label (it includes the date range for week)
+        byPeriod[key].label = row.label || byPeriod[key].label;
+        byPeriod[key].ads = row.conversions || 0;
+      }
+    }
+    return Object.values(byPeriod).sort((a, b) => a.period.localeCompare(b.period));
+  }, [ga4.data, ads.data]);
+
+  const isLoading = ga4.isLoading || ads.isLoading;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <h4 className="text-sm font-semibold text-navy">Évolution des conversions — YTD</h4>
+          <div className="flex gap-0.5 bg-bg-page rounded-lg p-0.5">
+            {RECON_GRANULARITIES.map((g) => (
+              <button
+                key={g.value}
+                onClick={() => setGranularity(g.value)}
+                className={`px-3 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                  granularity === g.value
+                    ? 'bg-white text-navy shadow-sm'
+                    : 'text-navy-muted hover:text-navy'
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-0.5 rounded" style={{ background: '#378ADD' }} />
+            <span className="text-[11px] text-navy-muted">GA4 (google/cpc)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-0.5 rounded" style={{ background: '#1A2E4A' }} />
+            <span className="text-[11px] text-navy-muted">Google Ads</span>
+          </div>
+        </div>
+      </div>
+
+      {isLoading && data.length === 0 ? (
+        <div className="skeleton h-64 w-full rounded-chart" />
+      ) : data.length === 0 ? (
+        <div className="h-64 flex items-center justify-center text-navy-muted text-sm">
+          Aucune donnée disponible
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,46,74,0.07)" vertical={false} />
+            <XAxis
+              dataKey="period"
+              tick={{ fill: '#8896B0', fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+              tickFormatter={(p) => periodTick(p, granularity)}
+            />
+            <YAxis
+              tick={{ fill: '#8896B0', fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={fCompact}
+              width={45}
+            />
+            <Tooltip
+              content={<ReconciliationConvTooltip />}
+              cursor={{ stroke: 'rgba(26,46,74,0.15)', strokeWidth: 1 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="ga4"
+              name="GA4"
+              stroke="#378ADD"
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 4, fill: '#378ADD', stroke: '#fff', strokeWidth: 2 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="ads"
+              name="Google Ads"
+              stroke="#1A2E4A"
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 4, fill: '#1A2E4A', stroke: '#fff', strokeWidth: 2 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
 // ─── Section 2: GA4 vs Google Ads Reconciliation ───────
-function ReconciliationTable({ ga4Data, adsData, isLoading }) {
+function ReconciliationTable({ ga4Data, adsData, isLoading, filters }) {
   if (isLoading || !ga4Data || !adsData) {
-    return <Skeleton h="h-40" />;
+    return (
+      <div className="bg-white rounded-card p-6 border border-border shadow-card">
+        <h3 className="text-lg font-semibold text-navy mb-4">GA4 vs Google Ads — Reconciliation</h3>
+        <ReconciliationConvChart filters={filters} />
+        <div className="skeleton h-40 w-full rounded-chart" />
+      </div>
+    );
   }
 
   const ga4 = ga4Data.current;
@@ -361,6 +578,7 @@ function ReconciliationTable({ ga4Data, adsData, isLoading }) {
   return (
     <div className="bg-white rounded-card p-6 border border-border shadow-card">
       <h3 className="text-lg font-semibold text-navy mb-4">GA4 vs Google Ads — Reconciliation</h3>
+      <ReconciliationConvChart filters={filters} />
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
@@ -756,6 +974,7 @@ export default function GA4View({ filters }) {
         ga4Data={ga4KpisCpc.data}
         adsData={adsKpis.data}
         isLoading={ga4KpisCpc.isLoading || adsKpis.isLoading}
+        filters={filters}
       />
     </div>
   );
