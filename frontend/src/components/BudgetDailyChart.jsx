@@ -19,12 +19,12 @@ import { useComarket } from '../contexts/ComarketContext';
 import { CHART } from '../utils/chartColors';
 
 const BRAND_OPTIONS = [
-  { key: 'COCOONCENTER', label: 'Cocooncenter' },
-  { key: 'PASCAL_COSTE', label: 'Pascal Coste Shopping' },
-  { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Parapharmacie Lafayette' },
+  { key: 'BRAND_A', label: 'Brand Alpha' },
+  { key: 'BRAND_B', label: 'Brand Beta' },
+  { key: 'BRAND_C', label: 'Brand Gamma' },
 ];
 
-const CC_MARKETS = [
+const BRAND_A_MARKETS = [
   'ALL',
   'FR',
   'France Para Laf',
@@ -48,12 +48,12 @@ const CC_MARKETS = [
   'AU',
   'US',
 ];
-const PCS_MARKETS = ['ALL', 'FR'];
+const BRAND_B_MARKETS = ['ALL', 'FR'];
 
 function getMarketsForBrand(brand) {
   const b = (brand || '').toUpperCase();
-  if (b === 'COCOONCENTER') return CC_MARKETS;
-  return PCS_MARKETS;
+  if (b === 'BRAND_A') return BRAND_A_MARKETS;
+  return BRAND_B_MARKETS;
 }
 
 function getYears() {
@@ -139,7 +139,7 @@ function CustomTooltip({ active, payload }) {
 
 export default function BudgetDailyChart({ brand: propsBrand, market: propsMarket }) {
   const currentYear = new Date().getFullYear();
-  const [brand, setBrand] = useState(propsBrand || 'COCOONCENTER');
+  const [brand, setBrand] = useState(propsBrand || 'BRAND_A');
   const [market, setMarket] = useState(propsMarket || 'ALL');
   const [year, setYear] = useState(currentYear);
   const years = getYears();

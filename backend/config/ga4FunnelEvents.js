@@ -7,7 +7,7 @@ const DEFAULT_FUNNEL_EVENTS = [
 ];
 
 // Per-brand overrides: map step key → actual GA4 event name used on that property
-// Example: COCOONCENTER: { add_to_cart: 'step_cart' }
+// Example: BRAND_A: { add_to_cart: 'step_cart' }
 const BRAND_OVERRIDES = {};
 
 export function getFunnelEvents(brand) {

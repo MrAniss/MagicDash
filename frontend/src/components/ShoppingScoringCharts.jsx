@@ -198,7 +198,7 @@ function GenericBarChart({ data, dataKey, title, label, activeKey, onSegmentClic
 export default function ShoppingScoringCharts({ brand, market, from, to }) {
   const [activeKey, setActiveKey] = useState(null);
 
-  const enabled = brand === 'COCOONCENTER' && market === 'FR';
+  const enabled = brand === 'BRAND_A' && market === 'FR';
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['shopping-scoring-v4', from, to],
@@ -226,14 +226,14 @@ export default function ShoppingScoringCharts({ brand, market, from, to }) {
           </p>
         </div>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#E3F2FD] text-[#1565C0] border border-[#1565C0]/20 uppercase tracking-wide">
-          Cocooncenter FR
+          Brand Alpha FR
         </span>
       </div>
 
       <div className="px-6 pb-6 pt-5">
         {!enabled && (
           <p className="text-xs text-navy-muted text-center py-8">
-            Pas de données — sélectionne <span className="font-semibold">Cocooncenter</span> +{' '}
+            Pas de données — sélectionne <span className="font-semibold">Brand Alpha</span> +{' '}
             <span className="font-semibold">France</span> pour afficher l&apos;analyse.
           </p>
         )}

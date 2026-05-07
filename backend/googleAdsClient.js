@@ -1,12 +1,15 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import { getOAuth2Client } from './auth.js';
 import { BRANDS, MCC_ID, getMarginConversionActionId } from './config/accounts.js';
+import { isDemoMode } from './services/demo/demoMode.js';
+import * as __demoGoogleAds from './services/demo/demoGoogleAds.js';
 
 // ─── Cache ─────────────────────────────────────────────
 const cache = new Map();
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 export function clearCache() {
+  if (isDemoMode()) return __demoGoogleAds.clearCache();
   cache.clear();
   compCache.clear();
   shoppingCache.clear();
@@ -26,6 +29,7 @@ function setCache(key, data) {
 // ─── Google Ads API setup ──────────────────────────────
 
 export function getApi() {
+  if (isDemoMode()) return __demoGoogleAds.getApi();
   return new GoogleAdsApi({
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
@@ -34,6 +38,7 @@ export function getApi() {
 }
 
 export function getRefreshToken() {
+  if (isDemoMode()) return __demoGoogleAds.getRefreshToken();
   const client = getOAuth2Client();
   const creds = client.credentials;
   if (!creds?.refresh_token) {
@@ -43,6 +48,7 @@ export function getRefreshToken() {
 }
 
 export function getCustomer(api, customerId, loginCustomerId, refreshToken) {
+  if (isDemoMode()) return __demoGoogleAds.getCustomer();
   return api.Customer({
     customer_id: customerId.replace(/-/g, ''),
     login_customer_id: loginCustomerId.replace(/-/g, ''),
@@ -174,15 +180,15 @@ async function queryAccount(api, accountId, loginCustomerId, gaql, refreshToken,
   return results.map(row => normalizeRow(row, brand, brandLabel, market));
 }
 
-async function queryAllCocooncenter(api, refreshToken, dateFrom, dateTo, includeComarket) {
+async function queryAllMccMultiMarket(api, refreshToken, dateFrom, dateTo, includeComarket) {
   const gaql = buildGAQL(dateFrom, dateTo, includeComarket);
-  const accounts = BRANDS.COCOONCENTER.accounts;
+  const accounts = BRANDS.BRAND_A.accounts;
 
   const results = await Promise.all(
     accounts.map(acc =>
-      queryAccount(api, acc.id, MCC_ID, gaql, refreshToken, 'COCOONCENTER', 'Cocooncenter', acc.market)
+      queryAccount(api, acc.id, MCC_ID, gaql, refreshToken, 'BRAND_A', 'Brand Alpha', acc.market)
         .catch(err => {
-          console.error(`Error querying CC ${acc.market} (${acc.id}):`, err.message);
+          console.error(`Error querying Brand A ${acc.market} (${acc.id}):`, err.message);
           return [];
         })
     )
@@ -208,6 +214,7 @@ async function queryStandaloneAccount(api, refreshToken, accountDef, dateFrom, d
 // ─── Public API (same signatures as sheetsReader) ──────
 
 export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaignType, includeComarket = false }) {
+  if (isDemoMode()) return __demoGoogleAds.getRows({ brand, market, from, to, campaignType, includeComarket });
   const cacheKey = ['rows', brand, from, to, String(includeComarket)].join('|');
   let allRows = getFromCache(cacheKey);
 
@@ -217,17 +224,17 @@ export async function getRows({ brand = 'ALL', market = 'ALL', from, to, campaig
 
     const promises = [];
 
-    if (brand === 'ALL' || brand === 'COCOONCENTER') {
-      promises.push(queryAllCocooncenter(api, refreshToken, from, to, includeComarket));
+    if (brand === 'ALL' || brand === 'BRAND_A') {
+      promises.push(queryAllMccMultiMarket(api, refreshToken, from, to, includeComarket));
     }
-    if (brand === 'ALL' || brand === 'PASCAL_COSTE') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.PASCAL_COSTE, from, to, includeComarket));
+    if (brand === 'ALL' || brand === 'BRAND_B') {
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_B, from, to, includeComarket));
     }
-    if (brand === 'ALL' || brand === 'PARAPHARMACIE_LAFAYETTE') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.PARAPHARMACIE_LAFAYETTE, from, to, includeComarket));
+    if (brand === 'ALL' || brand === 'BRAND_C') {
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_C, from, to, includeComarket));
     }
-    if (brand === 'ALL' || brand === 'LASANTE') {
-      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.LASANTE, from, to, includeComarket));
+    if (brand === 'ALL' || brand === 'BRAND_D') {
+      promises.push(queryStandaloneAccount(api, refreshToken, BRANDS.BRAND_D, from, to, includeComarket));
     }
 
     const results = await Promise.all(promises);
@@ -301,6 +308,7 @@ async function queryAccountSignals(api, accountId, loginCustomerId, gaql, refres
 }
 
 export async function getSignalRows(brand, dateFrom, dateTo) {
+  if (isDemoMode()) return __demoGoogleAds.getSignalRows(brand, dateFrom, dateTo);
   const cacheKey = ['signals', brand, dateFrom, dateTo].join('|');
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
@@ -311,26 +319,26 @@ export async function getSignalRows(brand, dateFrom, dateTo) {
 
   let rows = [];
 
-  if (brand === 'COCOONCENTER') {
+  if (brand === 'BRAND_A') {
     const results = await Promise.all(
-      BRANDS.COCOONCENTER.accounts.map(acc =>
-        queryAccountSignals(api, acc.id, MCC_ID, gaql, refreshToken, 'COCOONCENTER', 'Cocooncenter', acc.market)
+      BRANDS.BRAND_A.accounts.map(acc =>
+        queryAccountSignals(api, acc.id, MCC_ID, gaql, refreshToken, 'BRAND_A', 'Brand Alpha', acc.market)
           .catch(() => [])
       )
     );
     rows = results.flat();
-  } else if (brand === 'PASCAL_COSTE') {
-    const acc = BRANDS.PASCAL_COSTE.accounts[0];
-    rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'PASCAL_COSTE', 'Pascal Coste Shopping', acc.market)
+  } else if (brand === 'BRAND_B') {
+    const acc = BRANDS.BRAND_B.accounts[0];
+    rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'BRAND_B', 'Brand Beta', acc.market)
       .catch(() => []);
-  } else if (brand === 'PARAPHARMACIE_LAFAYETTE') {
-    const acc = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
-    rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'PARAPHARMACIE_LAFAYETTE', 'Parapharmacie Lafayette', acc.market)
+  } else if (brand === 'BRAND_C') {
+    const acc = BRANDS.BRAND_C.accounts[0];
+    rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'BRAND_C', 'Brand Gamma', acc.market)
       .catch(() => []);
-  } else if (brand === 'LASANTE') {
-    const acc = BRANDS.LASANTE.accounts[0];
+  } else if (brand === 'BRAND_D') {
+    const acc = BRANDS.BRAND_D.accounts[0];
     if (acc) {
-      rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'LASANTE', 'LaSante.net', acc.market)
+      rows = await queryAccountSignals(api, acc.id, acc.id, gaql, refreshToken, 'BRAND_D', 'Brand Delta', acc.market)
         .catch(() => []);
     }
   }
@@ -409,6 +417,7 @@ async function queryAccountAudit(api, accountId, loginCustomerId, gaql, refreshT
 }
 
 export async function getCampaignAuditData(brand) {
+  if (isDemoMode()) return __demoGoogleAds.getCampaignAuditData(brand);
   const cacheKey = `audit|${brand}`;
   const entry = auditCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < AUDIT_CACHE_TTL) return entry.data;
@@ -425,24 +434,24 @@ export async function getCampaignAuditData(brand) {
   let accountList = [];
   if (brand === 'ALL') {
     accountList = [
-      ...BRANDS.COCOONCENTER.accounts.map(a => ({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID })),
-      { ...BRANDS.PASCAL_COSTE.accounts[0],           brand: 'PASCAL_COSTE',           brandLabel: 'Pascal Coste Shopping',   loginId: BRANDS.PASCAL_COSTE.accounts[0].id },
-      { ...BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0], brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0].id },
+      ...BRANDS.BRAND_A.accounts.map(a => ({ ...a, brand: 'BRAND_A', brandLabel: 'Brand Alpha', loginId: MCC_ID })),
+      { ...BRANDS.BRAND_B.accounts[0],           brand: 'BRAND_B',           brandLabel: 'Brand Beta',   loginId: BRANDS.BRAND_B.accounts[0].id },
+      { ...BRANDS.BRAND_C.accounts[0], brand: 'BRAND_C', brandLabel: 'Brand Gamma', loginId: BRANDS.BRAND_C.accounts[0].id },
     ];
-    if (BRANDS.LASANTE.accounts[0]) {
-      accountList.push({ ...BRANDS.LASANTE.accounts[0], brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: BRANDS.LASANTE.accounts[0].id });
+    if (BRANDS.BRAND_D.accounts[0]) {
+      accountList.push({ ...BRANDS.BRAND_D.accounts[0], brand: 'BRAND_D', brandLabel: 'Brand Delta', loginId: BRANDS.BRAND_D.accounts[0].id });
     }
-  } else if (brand === 'COCOONCENTER') {
-    accountList = BRANDS.COCOONCENTER.accounts.map(a => ({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
-  } else if (brand === 'PASCAL_COSTE') {
-    const a = BRANDS.PASCAL_COSTE.accounts[0];
-    accountList = [{ ...a, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping', loginId: a.id }];
-  } else if (brand === 'PARAPHARMACIE_LAFAYETTE') {
-    const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
-    accountList = [{ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id }];
-  } else if (brand === 'LASANTE') {
-    const a = BRANDS.LASANTE.accounts[0];
-    if (a) accountList = [{ ...a, brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: a.id }];
+  } else if (brand === 'BRAND_A') {
+    accountList = BRANDS.BRAND_A.accounts.map(a => ({ ...a, brand: 'BRAND_A', brandLabel: 'Brand Alpha', loginId: MCC_ID }));
+  } else if (brand === 'BRAND_B') {
+    const a = BRANDS.BRAND_B.accounts[0];
+    accountList = [{ ...a, brand: 'BRAND_B', brandLabel: 'Brand Beta', loginId: a.id }];
+  } else if (brand === 'BRAND_C') {
+    const a = BRANDS.BRAND_C.accounts[0];
+    accountList = [{ ...a, brand: 'BRAND_C', brandLabel: 'Brand Gamma', loginId: a.id }];
+  } else if (brand === 'BRAND_D') {
+    const a = BRANDS.BRAND_D.accounts[0];
+    if (a) accountList = [{ ...a, brand: 'BRAND_D', brandLabel: 'Brand Delta', loginId: a.id }];
   }
 
   // All accounts × 3 periods + budget query in parallel
@@ -517,7 +526,10 @@ export async function getCampaignAuditData(brand) {
   return list;
 }
 
-export function clearAuditCache() { auditCache.clear(); }
+export function clearAuditCache() {
+  if (isDemoMode()) return __demoGoogleAds.clearAuditCache();
+  auditCache.clear();
+}
 
 // ─── Shopping ────────────────────────────────────────────
 
@@ -568,6 +580,7 @@ async function queryAccountShopping(api, accountId, loginCustomerId, gaql, refre
 }
 
 export async function getShoppingData(brand, market, from, to) {
+  if (isDemoMode()) return __demoGoogleAds.getShoppingData(brand, market, from, to);
   const bKey = (brand || '').toUpperCase();
   const cacheKey = `shopping|${bKey}|${market}|${from}|${to}`;
   const entry = shoppingCache.get(cacheKey);
@@ -587,25 +600,25 @@ export async function getShoppingData(brand, market, from, to) {
       const gaql = buildShoppingGAQL(from, to);
 
       const accountList = [];
-      if (bKey === 'COCOONCENTER' || bKey === 'ALL') {
-        BRANDS.COCOONCENTER.accounts
+      if (bKey === 'BRAND_A' || bKey === 'ALL') {
+        BRANDS.BRAND_A.accounts
           .filter(a => market === 'ALL' || a.market === market)
-          .forEach(a => accountList.push({ ...a, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter', loginId: MCC_ID }));
+          .forEach(a => accountList.push({ ...a, brand: 'BRAND_A', brandLabel: 'Brand Alpha', loginId: MCC_ID }));
       }
-      if (bKey === 'PASCAL_COSTE' || bKey === 'ALL') {
-        const a = BRANDS.PASCAL_COSTE.accounts[0];
+      if (bKey === 'BRAND_B' || bKey === 'ALL') {
+        const a = BRANDS.BRAND_B.accounts[0];
         if (market === 'ALL' || a.market === market)
-          accountList.push({ ...a, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping', loginId: a.id });
+          accountList.push({ ...a, brand: 'BRAND_B', brandLabel: 'Brand Beta', loginId: a.id });
       }
-      if (bKey === 'PARAPHARMACIE_LAFAYETTE' || bKey === 'ALL') {
-        const a = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
+      if (bKey === 'BRAND_C' || bKey === 'ALL') {
+        const a = BRANDS.BRAND_C.accounts[0];
         if (market === 'ALL' || a.market === market)
-          accountList.push({ ...a, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette', loginId: a.id });
+          accountList.push({ ...a, brand: 'BRAND_C', brandLabel: 'Brand Gamma', loginId: a.id });
       }
-      if (bKey === 'LASANTE' || bKey === 'ALL') {
-        const a = BRANDS.LASANTE.accounts[0];
+      if (bKey === 'BRAND_D' || bKey === 'ALL') {
+        const a = BRANDS.BRAND_D.accounts[0];
         if (a && (market === 'ALL' || a.market === market))
-          accountList.push({ ...a, brand: 'LASANTE', brandLabel: 'LaSante.net', loginId: a.id });
+          accountList.push({ ...a, brand: 'BRAND_D', brandLabel: 'Brand Delta', loginId: a.id });
       }
 
       const results = await Promise.all(
@@ -627,14 +640,18 @@ export async function getShoppingData(brand, market, from, to) {
   return promise;
 }
 
-export function clearShoppingCache() { shoppingCache.clear(); }
+export function clearShoppingCache() {
+  if (isDemoMode()) return __demoGoogleAds.clearShoppingCache();
+  shoppingCache.clear();
+}
 
-// ─── Scoring (CC FR only) ────────────────────────────────
+// ─── Scoring (Brand A FR only) ────────────────────────────────
 
 const scoringCache = new Map();
 const SCORING_CACHE_TTL = 30 * 60 * 1000;
 
 export async function getScoringData(from, to) {
+  if (isDemoMode()) return __demoGoogleAds.getScoringData(from, to);
   const cacheKey = `scoring_v3|${from}|${to}`;
   const entry = scoringCache.get(cacheKey);
   if (entry && (Date.now() - entry.ts) < SCORING_CACHE_TTL) return entry.data;
@@ -642,9 +659,9 @@ export async function getScoringData(from, to) {
 
   const refreshToken = getRefreshToken();
   const api = getApi();
-  const ccFr = BRANDS.COCOONCENTER.accounts.find(a => a.market === 'FR');
-  const customer = getCustomer(api, ccFr.id, MCC_ID, refreshToken);
-  const marginActionId = getMarginConversionActionId('COCOONCENTER', 'FR');
+  const brandAFr = BRANDS.BRAND_A.accounts.find(a => a.market === 'FR');
+  const customer = getCustomer(api, brandAFr.id, MCC_ID, refreshToken);
+  const marginActionId = getMarginConversionActionId('BRAND_A', 'FR');
 
   // Helper to map campaign name to scoring bucket
   const getBucket = (name) => {
@@ -677,7 +694,7 @@ export async function getScoringData(from, to) {
       metrics.all_conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${from}' AND '${to}'
-    AND segments.conversion_action = 'customers/${ccFr.id.replace(/-/g, '')}/conversionActions/${marginActionId}'
+    AND segments.conversion_action = 'customers/${brandAFr.id.replace(/-/g, '')}/conversionActions/${marginActionId}'
     AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'` : null;
 
   const [baseResults, marginResults] = await Promise.all([
@@ -745,16 +762,20 @@ for (const r of marginResults) {
   return data;
 }
 
-export function clearScoringCache() { scoringCache.clear(); }
+export function clearScoringCache() {
+  if (isDemoMode()) return __demoGoogleAds.clearScoringCache();
+  scoringCache.clear();
+}
 
 export async function getComarketRows({ from, to }) {
+  if (isDemoMode()) return __demoGoogleAds.getComarketRows({ from, to });
   const refreshToken = getRefreshToken();
   const api = getApi();
 
-  // Query FR Cocooncenter with comarket included (override GAQL filter)
+  // Query FR Brand Alpha with comarket included (override GAQL filter)
   const gaql = buildGAQL(from, to, true);
-  const frAccount = BRANDS.COCOONCENTER.accounts.find(a => a.market === 'FR');
-  const rows = await queryAccount(api, frAccount.id, MCC_ID, gaql, refreshToken, 'COCOONCENTER', 'Cocooncenter', 'FR');
+  const frAccount = BRANDS.BRAND_A.accounts.find(a => a.market === 'FR');
+  const rows = await queryAccount(api, frAccount.id, MCC_ID, gaql, refreshToken, 'BRAND_A', 'Brand Alpha', 'FR');
 
   return rows.filter(r => r.comarket);
 }
@@ -772,7 +793,10 @@ function getFromCompCache(key) {
 }
 function setCompCache(key, data) { compCache.set(key, { data, ts: Date.now() }); }
 
-export function clearCompCache() { compCache.clear(); }
+export function clearCompCache() {
+  if (isDemoMode()) return __demoGoogleAds.clearCompCache();
+  compCache.clear();
+}
 
 function buildOwnMetricsGAQL(dateFrom, dateTo) {
   return `SELECT
@@ -852,6 +876,7 @@ async function queryAccountCompetition(api, accountId, loginCustomerId, ownGAQL,
 }
 
 export async function getCompetitionData(brand, dateFrom, dateTo) {
+  if (isDemoMode()) return __demoGoogleAds.getCompetitionData(brand, dateFrom, dateTo);
   const cacheKey = `comp|${brand}|${dateFrom}|${dateTo}`;
   const cached = getFromCompCache(cacheKey);
   if (cached) return cached;
@@ -863,23 +888,23 @@ export async function getCompetitionData(brand, dateFrom, dateTo) {
 
   let allOwn = [], allInsights = [];
 
-  if (brand === 'COCOONCENTER') {
+  if (brand === 'BRAND_A') {
     const results = await Promise.all(
-      BRANDS.COCOONCENTER.accounts.map(acc =>
+      BRANDS.BRAND_A.accounts.map(acc =>
         queryAccountCompetition(api, acc.id, MCC_ID, ownGAQL, auctionGAQL, refreshToken, acc.market)
       )
     );
     results.forEach(r => { allOwn.push(...r.own); allInsights.push(...r.insights); });
-  } else if (brand === 'PASCAL_COSTE') {
-    const acc = BRANDS.PASCAL_COSTE.accounts[0];
+  } else if (brand === 'BRAND_B') {
+    const acc = BRANDS.BRAND_B.accounts[0];
     const r = await queryAccountCompetition(api, acc.id, acc.id, ownGAQL, auctionGAQL, refreshToken, acc.market);
     allOwn = r.own; allInsights = r.insights;
-  } else if (brand === 'PARAPHARMACIE_LAFAYETTE') {
-    const acc = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
+  } else if (brand === 'BRAND_C') {
+    const acc = BRANDS.BRAND_C.accounts[0];
     const r = await queryAccountCompetition(api, acc.id, acc.id, ownGAQL, auctionGAQL, refreshToken, acc.market);
     allOwn = r.own; allInsights = r.insights;
-  } else if (brand === 'LASANTE') {
-    const acc = BRANDS.LASANTE.accounts[0];
+  } else if (brand === 'BRAND_D') {
+    const acc = BRANDS.BRAND_D.accounts[0];
     if (acc) {
       const r = await queryAccountCompetition(api, acc.id, acc.id, ownGAQL, auctionGAQL, refreshToken, acc.market);
       allOwn = r.own; allInsights = r.insights;
@@ -907,6 +932,7 @@ function buildTrendGAQL(dateFrom, dateTo) {
 }
 
 export async function getCompetitionTrendData(brand, market, dateFrom, dateTo) {
+  if (isDemoMode()) return __demoGoogleAds.getCompetitionTrendData(brand, market, dateFrom, dateTo);
   const cacheKey = `comptrend|${brand}|${market}|${dateFrom}|${dateTo}`;
   const cached = getFromCompCache(cacheKey);
   if (cached) return cached;
@@ -933,10 +959,10 @@ export async function getCompetitionTrendData(brand, market, dateFrom, dateTo) {
 
   let rows = [];
 
-  if (brand === 'COCOONCENTER') {
+  if (brand === 'BRAND_A') {
     const accounts = market === 'ALL'
-      ? BRANDS.COCOONCENTER.accounts
-      : BRANDS.COCOONCENTER.accounts.filter(a => a.market === market);
+      ? BRANDS.BRAND_A.accounts
+      : BRANDS.BRAND_A.accounts.filter(a => a.market === market);
     const results = await Promise.all(
       accounts.map(acc => {
         const customer = getCustomer(api, acc.id, MCC_ID, refreshToken);
@@ -947,9 +973,9 @@ export async function getCompetitionTrendData(brand, market, dateFrom, dateTo) {
     );
     rows = results.flat();
   } else {
-    const brandDef = brand === 'PASCAL_COSTE' ? BRANDS.PASCAL_COSTE
-      : brand === 'LASANTE' ? BRANDS.LASANTE
-      : BRANDS.PARAPHARMACIE_LAFAYETTE;
+    const brandDef = brand === 'BRAND_B' ? BRANDS.BRAND_B
+      : brand === 'BRAND_D' ? BRANDS.BRAND_D
+      : BRANDS.BRAND_C;
     const acc = brandDef.accounts[0];
     if (acc && (market === 'ALL' || acc.market === market)) {
       const customer = getCustomer(api, acc.id, acc.id, refreshToken);

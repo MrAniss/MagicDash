@@ -1,4 +1,4 @@
-// PM2 process configuration for the SEA Dashboard backend.
+// PM2 process configuration for the MagicDash backend.
 // Usage:
 //   npm run pm:start     — start (or reload if already running)
 //   npm run pm:logs      — tail combined stdout/stderr
@@ -15,7 +15,7 @@ const path = require('path');
 module.exports = {
   apps: [
     {
-      name:        'sea-dashboard-backend',
+      name:        'magicdash-backend',
       script:      'server.js',
       cwd:         path.join(__dirname, 'backend'),
       instances:   1,
@@ -39,7 +39,7 @@ module.exports = {
       max_restarts: 10,
     },
     {
-      name:        'sea-dashboard-frontend',
+      name:        'magicdash-frontend',
       script:      'node_modules/vite/bin/vite.js',
       args:        '--host',
       cwd:         path.join(__dirname, 'frontend'),

@@ -36,9 +36,9 @@ const PLATFORMS = [
   { key: 'all',    label: 'Combiné', enabled: false, badge: 'À venir' },
 ];
 
-// Phase 1 — Meta Ads is only configured on Cocooncenter. Other brands fall
+// Phase 1 — Meta Ads is only configured on Brand Alpha. Other brands fall
 // back to this when selected in the header.
-const META_BRAND = 'COCOONCENTER';
+const META_BRAND = 'BRAND_A';
 const META_DEFAULT_MARKET = 'FR';
 // Refined at runtime via /api/paid-social/status, but we hardcode a fallback
 // so the first render doesn't bounce the market selection while the status
@@ -1165,7 +1165,7 @@ export default function PaidSocialView({ filters }) {
         <div className="text-[11px] text-navy-muted">
           Marchés Meta : <span className="font-semibold text-navy">{supportedMarkets.join(' · ')}</span>
           <span className="mx-1.5 opacity-50">·</span>
-          Vue actuelle : <span className="font-semibold text-navy">Cocooncenter {scope.market}</span>
+          Vue actuelle : <span className="font-semibold text-navy">Brand Alpha {scope.market}</span>
         </div>
       </div>
 
@@ -1180,7 +1180,7 @@ export default function PaidSocialView({ filters }) {
         <div className="bg-blue-50 border border-blue-200 rounded-card px-4 py-2.5 text-xs text-blue-700 flex items-center gap-2">
           <span>ℹ️</span>
           <span>
-            Phase 1 — Meta Ads est uniquement disponible sur <strong>Cocooncenter</strong>.
+            Phase 1 — Meta Ads est uniquement disponible sur <strong>Brand Alpha</strong>.
             Le filtre marque du header est ignoré sur cette vue.
           </span>
         </div>

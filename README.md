@@ -1,4 +1,4 @@
-# SEA Dashboard
+# MagicDash
 
 Dashboard de pilotage **acquisition multi-marques / multi-marchés**. Centralise Google Ads, GA4, Merchant Center, Meta Ads et budgets Google Sheets dans une seule interface React.
 
@@ -94,7 +94,7 @@ Snapshots quotidiens du flux Merchant Center pour détecter les changements d'at
 
 ```bash
 git clone <url-du-repo>.git
-cd dashproject
+cd magicdash
 ```
 
 ### 2. Installer les dépendances
@@ -294,7 +294,7 @@ npm run dev:front     # frontend sur :5173 via Vite
 
 ### Mode détaché via PM2 (recommandé)
 
-PM2 gère le restart auto et permet de tourner sans terminal visible. Le fichier [`ecosystem.config.cjs`](ecosystem.config.cjs) à la racine définit deux processes (`sea-dashboard-backend` + `sea-dashboard-frontend`).
+PM2 gère le restart auto et permet de tourner sans terminal visible. Le fichier [`ecosystem.config.cjs`](ecosystem.config.cjs) à la racine définit deux processes (`magicdash-backend` + `magicdash-frontend`).
 
 ```bash
 npm run pm:start      # lance + sauvegarde l'état PM2
@@ -314,7 +314,7 @@ Pour lancer PM2 + ouvrir le navigateur sans fenêtre cmd :
 ```vbs
 ' start_dashboard.vbs
 Set WshShell = CreateObject("WScript.Shell")
-projectDir = "C:\chemin\vers\dashproject"
+projectDir = "C:\chemin\vers\magicdash"
 WshShell.Run "cmd /c cd /d """ & projectDir & """ && pm2 startOrReload ecosystem.config.cjs --update-env && pm2 save", 0, True
 WScript.Sleep 3000
 WshShell.Run "http://localhost:5173", 1, False
@@ -335,7 +335,7 @@ cd backend && pm2 start ecosystem.config.cjs --env production
 ## Structure du projet
 
 ```
-dashproject/
+magicdash/
 ├── ecosystem.config.cjs          # Config PM2 (back + front)
 ├── package.json                  # Workspaces + scripts dev:* / pm:*
 ├── README.md
@@ -461,7 +461,7 @@ Toutes les routes nécessitent OAuth (`isAuthenticated()`) sauf indication contr
 - `ExportButtons` — CSV download + TSV copy pour Sheets
 - `KpiCards`, `AccordionSection`, `Header`, `TopProgressBar`
 
-Filtres globaux (marque/marché/preset/compareTo) persistés dans `localStorage` (clé `sea_dashboard_filters`).
+Filtres globaux (marque/marché/preset/compareTo) persistés dans `localStorage` (clé `magicdash_filters`).
 
 ---
 

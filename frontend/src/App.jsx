@@ -15,11 +15,13 @@ import WeeklyPerformanceSummary from './components/WeeklyPerformanceSummary';
 import AccordionSection from './components/AccordionSection';
 import TopProgressBar from './components/TopProgressBar';
 import LoginScreen from './components/LoginScreen';
+import SetupWizard from './components/SetupWizard';
 import { useKpis, useMarkets, useDemoMode } from './hooks/useAdsData';
 import { useAuth } from './contexts/AuthContext';
 import { getPresetRange } from './utils/dateHelpers';
+import { API_URL } from './utils/api';
 
-const STORAGE_KEY = 'sea_dashboard_filters';
+const STORAGE_KEY = 'magicdash_filters';
 
 function loadFilters() {
   try {
@@ -50,12 +52,42 @@ const PAID_SEARCH_SOURCES = [
   { key: 'ga4', label: 'GA4' },
 ];
 
+function useSetupStatus() {
+  const [status, setStatus] = useState({ loading: true, needsSetup: false });
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/api/setup/status`)
+      .then(r => (r.ok ? r.json() : { needsSetup: false }))
+      .then(body => { if (!cancelled) setStatus({ loading: false, ...body }); })
+      .catch(() => { if (!cancelled) setStatus({ loading: false, needsSetup: false }); });
+    return () => { cancelled = true; };
+  }, [reloadKey]);
+
+  return { ...status, refresh: () => setReloadKey(k => k + 1) };
+}
+
 export default function App() {
-  // TODO AUTH — décommenter pour activer le gate de connexion (nécessite users.json rempli côté backend)
-  // const { isAuthenticated } = useAuth();
-  // if (!isAuthenticated) {
-  //   return <LoginScreen />;
-  // }
+  const setup = useSetupStatus();
+  const { isAuthenticated } = useAuth();
+
+  if (setup.loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page">
+        <div className="text-navy-muted text-sm">Chargement…</div>
+      </div>
+    );
+  }
+
+  if (setup.needsSetup) {
+    return <SetupWizard onComplete={setup.refresh} />;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+
   return <Dashboard />;
 }
 
@@ -196,7 +228,7 @@ function Dashboard() {
 
       <footer className="mt-auto py-5 text-center border-t border-border">
         <span className="text-xs text-navy-muted tracking-widest uppercase select-none">
-          Made with <span className="text-danger mx-0.5">♥</span> · Dhygietal
+          Made with <span className="text-magic-fuchsia mx-0.5">♥</span> · MagicDash
         </span>
       </footer>
     </div>

@@ -1,6 +1,6 @@
 // Mapping plateforme → ad account par marque/marché.
-// Phase 1 : Meta sur Cocooncenter (5 marchés actifs).
-// Phase 2 : ajouter Pascal Coste / Para. Lafayette + TikTok.
+// Phase 1 : Meta sur Brand Alpha (5 marchés actifs).
+// Phase 2 : ajouter Brand Beta / Brand Gamma + TikTok.
 //
 // Account IDs are loaded from .env to keep them out of source control:
 //   META_AD_ACCOUNT_ID_FR=act_xxxxxxxxxxxxxxxx
@@ -12,13 +12,15 @@
 // getMetaSupportedMarkets() — the frontend then falls back to a configured
 // market and shows a banner.
 
+import { isDemoMode } from '../services/demo/demoMode.js';
+
 const META_BRAND_MARKETS = {
-  COCOONCENTER: {
-    FR: { label: 'Cocooncenter France' },
-    UK: { label: 'Cocooncenter UK' },
-    DE: { label: 'Cocooncenter Allemagne' },
-    ES: { label: 'Cocooncenter Espagne' },
-    IT: { label: 'Cocooncenter Italie' },
+  BRAND_A: {
+    FR: { label: 'Brand Alpha France' },
+    UK: { label: 'Brand Alpha UK' },
+    DE: { label: 'Brand Alpha Allemagne' },
+    ES: { label: 'Brand Alpha Espagne' },
+    IT: { label: 'Brand Alpha Italie' },
   },
 };
 
@@ -33,6 +35,9 @@ function readAdAccountId(market) {
 export function getMetaAccount(brand, market) {
   const cfg = META_BRAND_MARKETS[brand]?.[market];
   if (!cfg) return null;
+  if (isDemoMode()) {
+    return { adAccountId: `act_demo-${brand}-${market}`, label: cfg.label };
+  }
   const adAccountId = readAdAccountId(market);
   if (!adAccountId) return null;
   return { adAccountId, label: cfg.label };
@@ -43,8 +48,9 @@ export function getMetaAccount(brand, market) {
  * configured in .env. The frontend uses this list to decide which markets
  * are clickable.
  */
-export function getMetaSupportedMarkets(brand = 'COCOONCENTER') {
+export function getMetaSupportedMarkets(brand = 'BRAND_A') {
   const cfg = META_BRAND_MARKETS[brand] || {};
+  if (isDemoMode()) return Object.keys(cfg);
   return Object.keys(cfg).filter(market => readAdAccountId(market));
 }
 

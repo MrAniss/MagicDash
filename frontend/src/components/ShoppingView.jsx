@@ -306,8 +306,8 @@ export default function ShoppingView({ filters }) {
       <PriceScorecards brand={brand} market={market} from={from} to={to} />
       <PriceScoringPies brand={brand} market={market} from={from} to={to} />
 
-      {/* Scoring POAS (CC FR only — hidden unless brand=CC and market=FR) */}
-      {brand === 'COCOONCENTER' && market === 'FR' && (
+      {/* Scoring POAS (Brand A FR only — hidden unless brand=BRAND_A and market=FR) */}
+      {brand === 'BRAND_A' && market === 'FR' && (
         <ShoppingScoringCharts brand={brand} market={market} from={from} to={to} />
       )}
 

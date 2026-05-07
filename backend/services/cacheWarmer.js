@@ -16,11 +16,11 @@ import { isAuthenticated } from '../auth.js';
 // Most common combos that drive the Shopping tab.
 // brand=ALL is the heaviest (16-account fan-out) — we warm it first.
 const WARM_TARGETS = [
-  { brand: 'COCOONCENTER',           market: 'ALL' },
-  { brand: 'COCOONCENTER',           market: 'FR'  },
-  { brand: 'PASCAL_COSTE',           market: 'FR'  },
-  { brand: 'PARAPHARMACIE_LAFAYETTE', market: 'FR' },
-  { brand: 'LASANTE',                market: 'FR' },
+  { brand: 'BRAND_A', market: 'ALL' },
+  { brand: 'BRAND_A', market: 'FR'  },
+  { brand: 'BRAND_B', market: 'FR'  },
+  { brand: 'BRAND_C', market: 'FR'  },
+  { brand: 'BRAND_D', market: 'FR'  },
 ];
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h

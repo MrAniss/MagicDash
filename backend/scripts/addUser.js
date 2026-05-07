@@ -5,7 +5,7 @@
  *   node scripts/addUser.js <email> <password> [nom]
  *
  * Exemple :
- *   node scripts/addUser.js a.belmouaz@dhygietal.com "monMdpSecret" "Abel"
+ *   node scripts/addUser.js admin@example.com "monMdpSecret" "Admin"
  *
  * Le mot de passe est hashé avec bcrypt avant d'être stocké.
  * users.json est gitignored — ne pas committer.

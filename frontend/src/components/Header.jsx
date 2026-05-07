@@ -8,10 +8,10 @@ import { API_URL, authFetch } from '../utils/api';
 import { FlagIcon, marketName } from '../utils/flags';
 
 const BRAND_TABS = [
-  { key: 'COCOONCENTER', label: 'Cocooncenter' },
-  { key: 'PASCAL_COSTE', label: 'Pascal Coste' },
-  { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Para. Lafayette' },
-  { key: 'LASANTE', label: 'LaSante.net' },
+  { key: 'BRAND_A', label: 'Brand Alpha' },
+  { key: 'BRAND_B', label: 'Brand Beta' },
+  { key: 'BRAND_C', label: 'Brand Gamma' },
+  { key: 'BRAND_D', label: 'Brand Delta' },
 ];
 
 const MARKETS_BY_BRAND = {
@@ -38,7 +38,7 @@ const MARKETS_BY_BRAND = {
     'AU',
     'US',
   ],
-  COCOONCENTER: [
+  BRAND_A: [
     'ALL',
     'FR',
     'BE',
@@ -61,9 +61,9 @@ const MARKETS_BY_BRAND = {
     'AU',
     'US',
   ],
-  PASCAL_COSTE: ['ALL', 'FR'],
-  PARAPHARMACIE_LAFAYETTE: ['ALL', 'FR'],
-  LASANTE: ['ALL', 'FR'],
+  BRAND_B: ['ALL', 'FR'],
+  BRAND_C: ['ALL', 'FR'],
+  BRAND_D: ['ALL', 'FR'],
 };
 
 function getAvailableMarkets(brand) {
@@ -236,8 +236,8 @@ export default function Header({ filters, onFiltersChange, activeView, onViewCha
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <img
-              src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
-              alt="Dhygietal"
+              src="/magicdash-logo.svg"
+              alt="MagicDash"
               style={{ height: '32px', width: 'auto' }}
             />
             <span className="text-navy-muted font-normal text-sm">Acquisition Dashboard</span>

@@ -23,15 +23,32 @@ export default function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-page px-4">
-      <div className="w-full max-w-sm bg-white border border-border rounded-card shadow-card p-8">
-        <div className="flex flex-col items-center mb-6">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-bg-page">
+      {/* Decorative gradient blobs */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full opacity-30 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #7C3AED 0%, transparent 70%)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full opacity-30 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #EC4899 0%, transparent 70%)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full opacity-20 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #06B6D4 0%, transparent 70%)' }}
+      />
+
+      <div className="relative w-full max-w-md bg-white/95 backdrop-blur border border-border rounded-card shadow-magic p-8">
+        <div className="flex flex-col items-center mb-8">
           <img
-            src="https://hygie31.com/wp-content/uploads/2024/07/dhygietal-LOGOTYPE-fond-blanc-1024x422.png"
-            alt="Dhygietal"
-            style={{ height: '40px', width: 'auto' }}
+            src="/magicdash-logo.svg"
+            alt="MagicDash"
+            style={{ height: '48px', width: 'auto' }}
           />
-          <span className="mt-2 text-navy-muted text-sm">Acquisition Dashboard</span>
+          <span className="mt-3 text-navy-muted text-sm">Acquisition performance, plug & play.</span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -46,7 +63,7 @@ export default function LoginScreen() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-bg-page text-navy text-sm px-3 py-2 rounded-inner border border-border focus:border-navy outline-none"
+              className="w-full bg-bg-page text-navy text-sm px-3 py-2.5 rounded-inner border border-border focus:border-magic-violet focus:ring-2 focus:ring-magic-violet/20 outline-none transition"
             />
           </div>
 
@@ -61,7 +78,7 @@ export default function LoginScreen() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-bg-page text-navy text-sm px-3 py-2 rounded-inner border border-border focus:border-navy outline-none"
+              className="w-full bg-bg-page text-navy text-sm px-3 py-2.5 rounded-inner border border-border focus:border-magic-violet focus:ring-2 focus:ring-magic-violet/20 outline-none transition"
             />
           </div>
 
@@ -74,11 +91,15 @@ export default function LoginScreen() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-navy text-white text-sm font-medium px-4 py-2 rounded-inner hover:bg-navy-light disabled:opacity-60 transition-colors"
+            className="w-full bg-magic-gradient text-white text-sm font-semibold px-4 py-2.5 rounded-inner hover:opacity-95 disabled:opacity-60 transition shadow-magic"
           >
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-xs text-navy-muted">
+          Made with <span className="text-magic-fuchsia">♥</span> · MagicDash
+        </p>
       </div>
     </div>
   );

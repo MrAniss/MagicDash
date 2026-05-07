@@ -5,31 +5,32 @@
 import db from '../database/db.js';
 import { fetchAllProducts } from './merchantCenterClient.js';
 import { ALL_ATTRIBUTES, isCritical } from '../config/monitoredAttributes.js';
+import { isDemoMode } from './demo/demoMode.js';
 
-const FEED_BRANDS = ['COCOONCENTER', 'PASCAL_COSTE', 'PARAPHARMACIE_LAFAYETTE', 'LASANTE'];
+const FEED_BRANDS = ['BRAND_A', 'BRAND_B', 'BRAND_C', 'BRAND_D'];
 
-// Full list of brand × market combos we snapshot. Cocooncenter has 14 markets;
+// Full list of brand × market combos we snapshot. Brand A has 14 markets;
 // only the UK account is shared (UK/US/CA/AU/SA/NO/IE) — UK is included here
 // but the other shared markets are skipped by default (same merchant ID, runs
 // can be added later if needed).
 const FEED_TARGETS = [
-  { brand: 'COCOONCENTER',           market: 'FR' },
-  { brand: 'COCOONCENTER',           market: 'BE' },
-  { brand: 'COCOONCENTER',           market: 'NL' },
-  { brand: 'COCOONCENTER',           market: 'DE' },
-  { brand: 'COCOONCENTER',           market: 'ES' },
-  { brand: 'COCOONCENTER',           market: 'IT' },
-  { brand: 'COCOONCENTER',           market: 'AT' },
-  { brand: 'COCOONCENTER',           market: 'FI' },
-  { brand: 'COCOONCENTER',           market: 'IE' },
-  { brand: 'COCOONCENTER',           market: 'PL' },
-  { brand: 'COCOONCENTER',           market: 'PT' },
-  { brand: 'COCOONCENTER',           market: 'RO' },
-  { brand: 'COCOONCENTER',           market: 'SE' },
-  { brand: 'COCOONCENTER',           market: 'UK' },
-  { brand: 'PASCAL_COSTE',           market: 'FR' },
-  { brand: 'PARAPHARMACIE_LAFAYETTE', market: 'FR' },
-  { brand: 'LASANTE',                market: 'FR' },
+  { brand: 'BRAND_A', market: 'FR' },
+  { brand: 'BRAND_A', market: 'BE' },
+  { brand: 'BRAND_A', market: 'NL' },
+  { brand: 'BRAND_A', market: 'DE' },
+  { brand: 'BRAND_A', market: 'ES' },
+  { brand: 'BRAND_A', market: 'IT' },
+  { brand: 'BRAND_A', market: 'AT' },
+  { brand: 'BRAND_A', market: 'FI' },
+  { brand: 'BRAND_A', market: 'IE' },
+  { brand: 'BRAND_A', market: 'PL' },
+  { brand: 'BRAND_A', market: 'PT' },
+  { brand: 'BRAND_A', market: 'RO' },
+  { brand: 'BRAND_A', market: 'SE' },
+  { brand: 'BRAND_A', market: 'UK' },
+  { brand: 'BRAND_B', market: 'FR' },
+  { brand: 'BRAND_C', market: 'FR' },
+  { brand: 'BRAND_D', market: 'FR' },
 ];
 
 // In-flight tracker so the manual button can't double-trigger a snapshot
@@ -232,6 +233,10 @@ function getRecentlySucceededKeys(hours = 6) {
 // Options:
 //   - skipRecent: if true, skip cibles with a successful run in the last 6h.
 export async function runAllSnapshots(triggerType = 'auto', { skipRecent = false } = {}) {
+  if (isDemoMode()) {
+    console.log('Feed Monitor: bulk run skipped (demo mode)');
+    return [];
+  }
   const skipKeys = skipRecent ? getRecentlySucceededKeys(6) : new Set();
   const targets = FEED_TARGETS.filter(t => !skipKeys.has(`${t.brand}|${t.market}`));
   if (skipRecent) {

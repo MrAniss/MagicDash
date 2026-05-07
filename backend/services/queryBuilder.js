@@ -48,34 +48,34 @@ function validateGAQL(gaql) {
 function getAccountsForIntent(brandKey, market) {
   const accounts = [];
 
-  if (brandKey === 'ALL' || brandKey === 'COCOONCENTER') {
-    const list = BRANDS.COCOONCENTER.accounts;
+  if (brandKey === 'ALL' || brandKey === 'BRAND_A') {
+    const list = BRANDS.BRAND_A.accounts;
     const filtered = (market && market !== 'ALL')
       ? list.filter(a => a.market === market)
       : list;
     filtered.forEach(acc =>
-      accounts.push({ ...acc, loginCustomerId: MCC_ID, brand: 'COCOONCENTER', brandLabel: 'Cocooncenter' })
+      accounts.push({ ...acc, loginCustomerId: MCC_ID, brand: 'BRAND_A', brandLabel: 'Brand Alpha' })
     );
   }
 
-  if (brandKey === 'ALL' || brandKey === 'PASCAL_COSTE') {
-    const acc = BRANDS.PASCAL_COSTE.accounts[0];
+  if (brandKey === 'ALL' || brandKey === 'BRAND_B') {
+    const acc = BRANDS.BRAND_B.accounts[0];
     if (!market || market === 'ALL' || market === 'FR') {
-      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'PASCAL_COSTE', brandLabel: 'Pascal Coste Shopping' });
+      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'BRAND_B', brandLabel: 'Brand Beta' });
     }
   }
 
-  if (brandKey === 'ALL' || brandKey === 'PARAPHARMACIE_LAFAYETTE') {
-    const acc = BRANDS.PARAPHARMACIE_LAFAYETTE.accounts[0];
+  if (brandKey === 'ALL' || brandKey === 'BRAND_C') {
+    const acc = BRANDS.BRAND_C.accounts[0];
     if (!market || market === 'ALL' || market === 'FR') {
-      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'PARAPHARMACIE_LAFAYETTE', brandLabel: 'Parapharmacie Lafayette' });
+      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'BRAND_C', brandLabel: 'Brand Gamma' });
     }
   }
 
-  if (brandKey === 'ALL' || brandKey === 'LASANTE') {
-    const acc = BRANDS.LASANTE.accounts[0];
+  if (brandKey === 'ALL' || brandKey === 'BRAND_D') {
+    const acc = BRANDS.BRAND_D.accounts[0];
     if (acc && (!market || market === 'ALL' || market === 'FR')) {
-      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'LASANTE', brandLabel: 'LaSante.net' });
+      accounts.push({ ...acc, loginCustomerId: acc.id, brand: 'BRAND_D', brandLabel: 'Brand Delta' });
     }
   }
 
@@ -163,10 +163,10 @@ async function executeGoogleAdsQuery(intent) {
 function buildStreamFilter(brandKey, market) {
   if (!market || market === 'ALL') return null;
 
-  const brandName = brandKey === 'COCOONCENTER' ? 'Cocooncenter'
-    : brandKey === 'PASCAL_COSTE' ? 'Pascal Coste Shopping'
-    : brandKey === 'LASANTE' ? 'LaSante.net'
-    : 'Parapharmacie Lafayette';
+  const brandName = brandKey === 'BRAND_A' ? 'Brand Alpha'
+    : brandKey === 'BRAND_B' ? 'Brand Beta'
+    : brandKey === 'BRAND_D' ? 'Brand Delta'
+    : 'Brand Gamma';
 
   const streamId = GA4_STREAMS[brandName]?.[market];
   if (!streamId) return null;

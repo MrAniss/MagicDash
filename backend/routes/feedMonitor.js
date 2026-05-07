@@ -16,16 +16,14 @@ router.use((req, res, next) => {
   next();
 });
 
-// Brand normalization — accepts either 'COCOONCENTER' or 'Cocooncenter'.
+// Brand normalization — accepts either 'BRAND_A' or 'Brand Alpha'.
 function normBrand(b) {
   if (!b) return null;
   const upper = String(b).toUpperCase().replace(/[\s-]+/g, '_');
-  if (upper.startsWith('COCOON'))                   return 'COCOONCENTER';
-  if (upper.startsWith('PASCAL'))                   return 'PASCAL_COSTE';
-  if (upper.startsWith('PARAPHARMACIE'))            return 'PARAPHARMACIE_LAFAYETTE';
-  if (upper.startsWith('PARA_LAFAYETTE'))           return 'PARAPHARMACIE_LAFAYETTE';
-  if (upper.startsWith('LASANTE') || upper.startsWith('LA_SANTE'))
-                                                    return 'LASANTE';
+  if (upper === 'BRAND_ALPHA' || upper === 'BRAND_A') return 'BRAND_A';
+  if (upper === 'BRAND_BETA'  || upper === 'BRAND_B') return 'BRAND_B';
+  if (upper === 'BRAND_GAMMA' || upper === 'BRAND_C') return 'BRAND_C';
+  if (upper === 'BRAND_DELTA' || upper === 'BRAND_D') return 'BRAND_D';
   return FEED_BRANDS.includes(upper) ? upper : null;
 }
 
@@ -53,7 +51,7 @@ router.get('/status', (_req, res) => {
 
 // Fire-and-forget bulk run for every brand × market in FEED_TARGETS.
 // Returns immediately because the run can take 30-60 minutes for the full
-// Cocooncenter set. Progress can be tracked via /status and /summary.
+// Brand A set. Progress can be tracked via /status and /summary.
 let bulkRunInFlight = false;
 router.post('/run-all', (req, res) => {
   if (bulkRunInFlight) {

@@ -4,6 +4,8 @@
 // single source of truth for "which markets exist".
 
 import './loadEnv.js';
+import { isDemoMode } from '../services/demo/demoMode.js';
+import { DEMO_BRANDS } from '../services/demo/demoConfig.js';
 
 function readId(envKey) {
   const v = process.env[envKey];
@@ -17,7 +19,7 @@ function readId(envKey) {
 
 export const MCC_ID = process.env.GOOGLE_ADS_MCC_ID || '';
 
-const COCOONCENTER_MARKETS = [
+const BRAND_A_MARKETS = [
   { market: 'FR', label: 'France'          },
   { market: 'BE', label: 'Belgique'        },
   { market: 'NL', label: 'Pays-Bas'        },
@@ -40,10 +42,10 @@ const COCOONCENTER_MARKETS = [
   { market: 'US', label: 'États-Unis'      },
 ];
 
-function buildCocooncenterAccounts() {
-  return COCOONCENTER_MARKETS
+function buildBrandAAccounts() {
+  return BRAND_A_MARKETS
     .map(({ market, label }) => ({
-      id: readId(`GOOGLE_ADS_ID_COCOONCENTER_${market}`),
+      id: readId(`GOOGLE_ADS_ID_BRAND_A_${market}`),
       market,
       label,
     }))
@@ -56,27 +58,42 @@ function buildStandaloneAccount(brandKey, market, label) {
 }
 
 export const BRANDS = {
-  COCOONCENTER: {
-    name: 'Cocooncenter',
+  BRAND_A: {
+    name: 'Brand Alpha',
     mode: 'mcc',
-    accounts: buildCocooncenterAccounts(),
+    accounts: buildBrandAAccounts(),
   },
-  PASCAL_COSTE: {
-    name: 'Pascal Coste Shopping',
+  BRAND_B: {
+    name: 'Brand Beta',
     mode: 'standalone',
-    accounts: buildStandaloneAccount('PASCAL_COSTE', 'FR', 'France'),
+    accounts: buildStandaloneAccount('BRAND_B', 'FR', 'France'),
   },
-  PARAPHARMACIE_LAFAYETTE: {
-    name: 'Parapharmacie Lafayette',
+  BRAND_C: {
+    name: 'Brand Gamma',
     mode: 'standalone',
-    accounts: buildStandaloneAccount('PARAPHARMACIE_LAFAYETTE', 'FR', 'France'),
+    accounts: buildStandaloneAccount('BRAND_C', 'FR', 'France'),
   },
-  LASANTE: {
-    name: 'LaSante.net',
+  BRAND_D: {
+    name: 'Brand Delta',
     mode: 'standalone',
-    accounts: buildStandaloneAccount('LASANTE', 'FR', 'France'),
+    accounts: buildStandaloneAccount('BRAND_D', 'FR', 'France'),
   },
 };
+
+if (isDemoMode()) {
+  let n = 0;
+  for (const b of DEMO_BRANDS) {
+    BRANDS[b.key] = {
+      name: BRANDS[b.key]?.name || b.label,
+      mode: b.mode,
+      accounts: b.markets.map((m) => ({
+        id: `demo-${b.key.toLowerCase()}-${m.code.toLowerCase()}-${++n}`,
+        market: m.code,
+        label: m.label,
+      })),
+    };
+  }
+}
 
 /**
  * Conversion action ID used for margin / POAS queries on a given

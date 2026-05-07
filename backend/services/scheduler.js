@@ -5,11 +5,17 @@
 import cron from 'node-cron';
 import { runAllSnapshots } from './feedSnapshotService.js';
 import { isAuthenticated } from '../auth.js';
+import { isDemoMode } from './demo/demoMode.js';
 
 let task = null;
 
 export function initScheduler() {
   if (task) return;
+
+  if (isDemoMode()) {
+    console.log('Feed Monitor scheduler skipped (demo mode)');
+    return;
+  }
 
   task = cron.schedule('15 8 * * *', async () => {
     if (!isAuthenticated()) {

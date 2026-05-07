@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getOAuth2Client } from '../auth.js';
 import '../config/loadEnv.js';
+import { isDemoMode } from './demo/demoMode.js';
+import * as __demoMc from './demo/demoMerchantCenter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = path.join(__dirname, '..', '.cache');
@@ -17,25 +19,25 @@ const env = (k) => process.env[k] || null;
 
 // One env var per UNIQUE MC account; structure stays here.
 const MC_ENV_KEYS = {
-  COCOONCENTER: {
-    FR: 'MC_ID_COCOONCENTER_FR',
-    BE: 'MC_ID_COCOONCENTER_BE',
-    UK: 'MC_ID_COCOONCENTER_UK',
-    DE: 'MC_ID_COCOONCENTER_DE',
-    ES: 'MC_ID_COCOONCENTER_ES',
-    IT: 'MC_ID_COCOONCENTER_IT',
-    AT: 'MC_ID_COCOONCENTER_AT',
-    FI: 'MC_ID_COCOONCENTER_FI',
-    IE: 'MC_ID_COCOONCENTER_IE',
-    NL: 'MC_ID_COCOONCENTER_NL',
-    PL: 'MC_ID_COCOONCENTER_PL',
-    PT: 'MC_ID_COCOONCENTER_PT',
-    RO: 'MC_ID_COCOONCENTER_RO',
-    SE: 'MC_ID_COCOONCENTER_SE',
+  BRAND_A: {
+    FR: 'MC_ID_BRAND_A_FR',
+    BE: 'MC_ID_BRAND_A_BE',
+    UK: 'MC_ID_BRAND_A_UK',
+    DE: 'MC_ID_BRAND_A_DE',
+    ES: 'MC_ID_BRAND_A_ES',
+    IT: 'MC_ID_BRAND_A_IT',
+    AT: 'MC_ID_BRAND_A_AT',
+    FI: 'MC_ID_BRAND_A_FI',
+    IE: 'MC_ID_BRAND_A_IE',
+    NL: 'MC_ID_BRAND_A_NL',
+    PL: 'MC_ID_BRAND_A_PL',
+    PT: 'MC_ID_BRAND_A_PT',
+    RO: 'MC_ID_BRAND_A_RO',
+    SE: 'MC_ID_BRAND_A_SE',
   },
-  PASCAL_COSTE:            { FR: 'MC_ID_PASCAL_COSTE_FR' },
-  PARAPHARMACIE_LAFAYETTE: { FR: 'MC_ID_PARAPHARMACIE_LAFAYETTE_FR' },
-  LASANTE:                 { FR: 'MC_ID_LASANTE_FR' },
+  BRAND_B: { FR: 'MC_ID_BRAND_B_FR' },
+  BRAND_C: { FR: 'MC_ID_BRAND_C_FR' },
+  BRAND_D: { FR: 'MC_ID_BRAND_D_FR' },
 };
 
 // Flat list of MC accounts per brand — used for "market=ALL" queries that
@@ -53,35 +55,35 @@ const MC_CONFIG = Object.fromEntries(
 // price_competitiveness.country_code. GB is used for the UK market.
 // Markets sharing an MC account (UK group) reference the same env var.
 const MC_MARKET = {
-  COCOONCENTER: {
-    FR: { merchantId: env('MC_ID_COCOONCENTER_FR'), countryCode: 'FR' },
-    BE: { merchantId: env('MC_ID_COCOONCENTER_BE'), countryCode: 'BE' },
-    UK: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'GB' },
-    US: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'US' },
-    CA: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'CA' },
-    AU: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'AU' },
-    SA: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'SA' },
-    NO: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'NO' },
-    IE: { merchantId: env('MC_ID_COCOONCENTER_UK'), countryCode: 'IE' },
-    DE: { merchantId: env('MC_ID_COCOONCENTER_DE'), countryCode: 'DE' },
-    ES: { merchantId: env('MC_ID_COCOONCENTER_ES'), countryCode: 'ES' },
-    IT: { merchantId: env('MC_ID_COCOONCENTER_IT'), countryCode: 'IT' },
-    AT: { merchantId: env('MC_ID_COCOONCENTER_AT'), countryCode: 'AT' },
-    FI: { merchantId: env('MC_ID_COCOONCENTER_FI'), countryCode: 'FI' },
-    NL: { merchantId: env('MC_ID_COCOONCENTER_NL'), countryCode: 'NL' },
-    PL: { merchantId: env('MC_ID_COCOONCENTER_PL'), countryCode: 'PL' },
-    PT: { merchantId: env('MC_ID_COCOONCENTER_PT'), countryCode: 'PT' },
-    RO: { merchantId: env('MC_ID_COCOONCENTER_RO'), countryCode: 'RO' },
-    SE: { merchantId: env('MC_ID_COCOONCENTER_SE'), countryCode: 'SE' },
+  BRAND_A: {
+    FR: { merchantId: env('MC_ID_BRAND_A_FR'), countryCode: 'FR' },
+    BE: { merchantId: env('MC_ID_BRAND_A_BE'), countryCode: 'BE' },
+    UK: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'GB' },
+    US: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'US' },
+    CA: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'CA' },
+    AU: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'AU' },
+    SA: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'SA' },
+    NO: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'NO' },
+    IE: { merchantId: env('MC_ID_BRAND_A_UK'), countryCode: 'IE' },
+    DE: { merchantId: env('MC_ID_BRAND_A_DE'), countryCode: 'DE' },
+    ES: { merchantId: env('MC_ID_BRAND_A_ES'), countryCode: 'ES' },
+    IT: { merchantId: env('MC_ID_BRAND_A_IT'), countryCode: 'IT' },
+    AT: { merchantId: env('MC_ID_BRAND_A_AT'), countryCode: 'AT' },
+    FI: { merchantId: env('MC_ID_BRAND_A_FI'), countryCode: 'FI' },
+    NL: { merchantId: env('MC_ID_BRAND_A_NL'), countryCode: 'NL' },
+    PL: { merchantId: env('MC_ID_BRAND_A_PL'), countryCode: 'PL' },
+    PT: { merchantId: env('MC_ID_BRAND_A_PT'), countryCode: 'PT' },
+    RO: { merchantId: env('MC_ID_BRAND_A_RO'), countryCode: 'RO' },
+    SE: { merchantId: env('MC_ID_BRAND_A_SE'), countryCode: 'SE' },
   },
-  PASCAL_COSTE: {
-    FR: { merchantId: env('MC_ID_PASCAL_COSTE_FR'), countryCode: 'FR' },
+  BRAND_B: {
+    FR: { merchantId: env('MC_ID_BRAND_B_FR'), countryCode: 'FR' },
   },
-  PARAPHARMACIE_LAFAYETTE: {
-    FR: { merchantId: env('MC_ID_PARAPHARMACIE_LAFAYETTE_FR'), countryCode: 'FR' },
+  BRAND_C: {
+    FR: { merchantId: env('MC_ID_BRAND_C_FR'), countryCode: 'FR' },
   },
-  LASANTE: {
-    FR: { merchantId: env('MC_ID_LASANTE_FR'), countryCode: 'FR' },
+  BRAND_D: {
+    FR: { merchantId: env('MC_ID_BRAND_D_FR'), countryCode: 'FR' },
   },
 };
 
@@ -94,7 +96,7 @@ function getMcTargets(brand, market = 'ALL') {
   }
   if (bKey === 'ALL') return Object.values(MC_CONFIG).flat().map(id => ({ merchantId: id, countryCode: null }));
   
-  // For PASCAL_COSTE and PARAPHARMACIE_LAFAYETTE, if market is ALL, return the single account they have
+  // For BRAND_B and BRAND_C, if market is ALL, return the single account they have
   if (MC_CONFIG[bKey]) {
      return MC_CONFIG[bKey].map(id => ({ merchantId: id, countryCode: (market === 'ALL' ? null : market) }));
   }
@@ -112,7 +114,7 @@ function microsToPrice(micros) {
 }
 
 // Extract the ISO country code from a feed-label-style country slot in
-// productId — Cocooncenter uses custom labels like "FR_NEW", "FR_OLD" instead
+// productId — Brand A uses custom labels like "FR_NEW", "FR_OLD" instead
 // of the bare ISO code. We want "FR_NEW" to match "FR" for filtering, and we
 // also want to match destinationStatuses' approvedCountries/disapprovedCountries
 // (which use ISO codes).
@@ -143,6 +145,7 @@ const PROMO_CACHE_TTL  = 60 * 60 * 1000;          // 1h
 const LINK_CACHE_TTL   = 7 * 24 * 60 * 60 * 1000; // 7d — URLs are stable
 
 export function clearMcCache() {
+  if (isDemoMode()) return __demoMc.clearMcCache();
   priceCache.clear();
   pcCache.clear();
   statusCache.clear();
@@ -174,6 +177,7 @@ function deserializeCache(arr, target, ttl) {
 }
 
 export function loadCacheFromDisk() {
+  if (isDemoMode()) return __demoMc.loadCacheFromDisk();
   try {
     if (!fs.existsSync(CACHE_FILE)) return;
     const raw = fs.readFileSync(CACHE_FILE, 'utf8');
@@ -200,6 +204,7 @@ export function loadCacheFromDisk() {
 
 let saveTimer = null;
 export function saveCacheToDisk() {
+  if (isDemoMode()) return __demoMc.saveCacheToDisk();
   // Debounce — coalesce bursts of writes within 5s into a single flush.
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -282,6 +287,7 @@ async function fetchProductPricesForMerchant(merchantId, countryCode = null) {
 }
 
 export async function getPriceMap(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.getPriceMap(brand, market);
   const cacheKey = `priceMap::${brand}::${market}`;
 
   // Return in-flight promise if one is already running for this key
@@ -382,6 +388,7 @@ async function fetchPriceCompForMerchant(merchantId, countryCode = null) {
 }
 
 export async function getPriceCompetitivenessData(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.getPriceCompetitivenessData(brand, market);
   const cacheKey = `${brand}::${market}`;
 
   // 1. Serve from cache if fresh
@@ -568,6 +575,7 @@ async function fetchProductStatusesForMerchant(merchantId, countryCode = null) {
 }
 
 export async function getProductStatuses(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.getProductStatuses(brand, market);
   const cacheKey = `${brand}::${market}`;
   if (statusInFlight.has(cacheKey)) return statusInFlight.get(cacheKey);
 
@@ -668,6 +676,7 @@ async function fetchSalePricesForMerchant(merchantId, countryCode = null) {
 }
 
 export async function getSalePriceMap(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.getSalePriceMap(brand, market);
   const cacheKey = `${brand}::${market}`;
   if (promoInFlight.has(cacheKey)) return promoInFlight.get(cacheKey);
 
@@ -849,7 +858,7 @@ async function fetchAllProductsForMerchant(merchantId, countryCode = null) {
 }
 
 // Detect if a merchant ID is dedicated to a single market in MC_MARKET (true for
-// almost all Cocooncenter accounts), versus shared across multiple markets like
+// almost all Brand A accounts), versus shared across multiple markets like
 // the UK account that also serves US/CA/AU/SA/NO/IE.
 function isDedicatedMerchant(brandKey, merchantId) {
   const map = MC_MARKET[brandKey];
@@ -863,6 +872,7 @@ function isDedicatedMerchant(brandKey, merchantId) {
 }
 
 export async function fetchAllProducts(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.fetchAllProducts(brand, market);
   const targets = getMcTargets(brand, market);
   if (!targets.length) return [];
   const brandKey = (brand || '').toUpperCase();
@@ -888,6 +898,7 @@ export async function fetchAllProducts(brand, market = 'ALL') {
 }
 
 export async function getProductLinkMap(brand, market = 'ALL') {
+  if (isDemoMode()) return __demoMc.getProductLinkMap(brand, market);
   const cacheKey = `${brand}::${market}`;
   if (linkInFlight.has(cacheKey)) return linkInFlight.get(cacheKey);
 

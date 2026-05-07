@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" fill="none">
+  <defs>
+    <linearGradient id="md-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="md-grad-dark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5B21B6"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <!-- Sparkle / 4-point star icon -->
+  <g transform="translate(8 12)">
+    <path d="M28 0 L33.5 22.5 L56 28 L33.5 33.5 L28 56 L22.5 33.5 L0 28 L22.5 22.5 Z"
+          fill="url(#md-grad)"/>
+    <circle cx="49" cy="9" r="3" fill="#06B6D4" opacity="0.85"/>
+    <circle cx="9" cy="49" r="2.2" fill="#06B6D4" opacity="0.7"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="80" y="52"
+        font-family="Inter, system-ui, sans-serif"
+        font-weight="800"
+        font-size="34"
+        letter-spacing="-1"
+        fill="url(#md-grad-dark)">MagicDash</text>
+</svg>

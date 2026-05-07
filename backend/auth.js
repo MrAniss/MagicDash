@@ -40,6 +40,7 @@ export function getOAuth2Client() {
 }
 
 export function isAuthenticated() {
+  if (process.env.DEMO_MODE === 'true') return true;
   const tokens = loadTokens();
   return !!(tokens && tokens.access_token);
 }

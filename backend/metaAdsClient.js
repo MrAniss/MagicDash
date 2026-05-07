@@ -1,5 +1,7 @@
 import adsSdk from 'facebook-nodejs-business-sdk';
 import { getMetaAccount } from './config/paidSocialAccounts.js';
+import { isDemoMode } from './services/demo/demoMode.js';
+import * as __demoMeta from './services/demo/demoMeta.js';
 
 const { AdAccount, FacebookAdsApi } = adsSdk;
 
@@ -32,6 +34,7 @@ function setCache(key, data) {
   cache.set(key, { data, ts: Date.now() });
 }
 export function clearMetaCache() {
+  if (isDemoMode()) return __demoMeta.clearMetaCache();
   cache.clear();
   inFlight.clear();
 }
@@ -148,6 +151,7 @@ async function fetchInsights({ brand, market, from, to, level = 'campaign', brea
  * Daily campaign-level rows for KPI / trend / campaign endpoints.
  */
 export async function getMetaRows({ brand, market, from, to }) {
+  if (isDemoMode()) return __demoMeta.getMetaRows({ brand, market, from, to });
   const account = getMetaAccount(brand, market);
   if (!account?.adAccountId) return [];
 
@@ -181,6 +185,7 @@ export async function getMetaRows({ brand, market, from, to }) {
  * @param {string} dimension — 'publisher_platform' | 'device_platform' | 'age' | 'gender'
  */
 export async function getMetaBreakdown({ brand, market, from, to, dimension }) {
+  if (isDemoMode()) return __demoMeta.getMetaBreakdown({ brand, market, from, to, dimension });
   const account = getMetaAccount(brand, market);
   if (!account?.adAccountId) return [];
 
@@ -217,6 +222,7 @@ export async function getMetaBreakdown({ brand, market, from, to, dimension }) {
 }
 
 export function isMetaConfigured() {
+  if (isDemoMode()) return __demoMeta.isMetaConfigured();
   if (!process.env.META_ACCESS_TOKEN) return false;
   // Accept either the legacy single-account env var or any per-market variant.
   if (process.env.META_AD_ACCOUNT_ID) return true;
@@ -388,6 +394,7 @@ function emptyMetricsRow(adMeta, campaignId) {
  * @param {'active'|'paused'|'all'} [opts.status='active']
  */
 export async function getMetaAds({ brand, market, from, to, campaignId, status = 'active' }) {
+  if (isDemoMode()) return __demoMeta.getMetaAds({ brand, market, from, to, campaignId, status });
   if (!campaignId) return [];
   const account = getMetaAccount(brand, market);
   if (!account?.adAccountId) return [];

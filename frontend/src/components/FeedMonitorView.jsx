@@ -11,18 +11,18 @@ import { downloadCsv } from '../utils/exportTable';
 import AccordionSection from './AccordionSection';
 
 const BRAND_KEY_MAP = {
-  COCOONCENTER:            'COCOONCENTER',
-  PASCAL_COSTE:            'PASCAL_COSTE',
-  PARAPHARMACIE_LAFAYETTE: 'PARAPHARMACIE_LAFAYETTE',
-  LASANTE:                 'LASANTE',
-  ALL:                     'COCOONCENTER',
+  BRAND_A: 'BRAND_A',
+  BRAND_B: 'BRAND_B',
+  BRAND_C: 'BRAND_C',
+  BRAND_D: 'BRAND_D',
+  ALL:     'BRAND_A',
 };
 
 const BRAND_LABEL = {
-  COCOONCENTER:            'Cocooncenter',
-  PASCAL_COSTE:            'Pascal Coste',
-  PARAPHARMACIE_LAFAYETTE: 'Para. Lafayette',
-  LASANTE:                 'LaSante.net',
+  BRAND_A: 'Brand Alpha',
+  BRAND_B: 'Brand Beta',
+  BRAND_C: 'Brand Gamma',
+  BRAND_D: 'Brand Delta',
 };
 
 function formatRelativeTime(isoDate) {
@@ -169,7 +169,7 @@ function LastSnapshotCard({ summary, isLoading, brand, market, onTriggered }) {
 
       {isRunning && (
         <div className="mb-3 bg-warning-bg border border-warning/20 rounded-inner px-3 py-2 text-xs text-warning">
-          Récupération du flux en cours — peut prendre 2 à 5 minutes pour Cocooncenter.
+          Récupération du flux en cours — peut prendre 2 à 5 minutes pour Brand Alpha.
         </div>
       )}
 
@@ -1311,7 +1311,7 @@ const MODES = [
 
 // ─── Main view ──────────────────────────────────────────────
 export default function FeedMonitorView({ filters }) {
-  const brand = BRAND_KEY_MAP[filters?.brand] || 'COCOONCENTER';
+  const brand = BRAND_KEY_MAP[filters?.brand] || 'BRAND_A';
   const market = (filters?.market && filters.market !== 'ALL') ? filters.market : 'FR';
   const [mode, setMode] = useState('auto');
 
@@ -1327,7 +1327,7 @@ export default function FeedMonitorView({ filters }) {
           <strong>{brandLabel}</strong> / {market}
           {filters?.brand === 'ALL' && (
             <span className="ml-2 text-warning">
-              ⚠️ Sélectionnez une marque dans le header pour cibler le suivi (par défaut : Cocooncenter).
+              ⚠️ Sélectionnez une marque dans le header pour cibler le suivi (par défaut : Brand Alpha).
             </span>
           )}
         </p>

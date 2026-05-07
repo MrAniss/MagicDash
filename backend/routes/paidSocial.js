@@ -25,7 +25,7 @@ router.use((req, res, next) => {
 // keep a guard in case someone hits the API directly.
 function normalizeScope(req) {
   const platform = (req.query.platform || 'meta').toLowerCase();
-  const brand    = (req.query.brand    || 'COCOONCENTER').toUpperCase();
+  const brand    = (req.query.brand    || 'BRAND_A').toUpperCase();
   const market   = (req.query.market   || 'FR').toUpperCase();
   return { platform, brand, market };
 }
@@ -276,7 +276,7 @@ router.get('/status', (_req, res) => {
   res.json({
     meta_configured: isMetaConfigured(),
     tiktok_configured: false, // Phase 2
-    meta_markets: { COCOONCENTER: getMetaSupportedMarkets('COCOONCENTER') },
+    meta_markets: { BRAND_A: getMetaSupportedMarkets('BRAND_A') },
   });
 });
 
@@ -316,7 +316,7 @@ router.get('/diagnose', async (_req, res) => {
     const today = new Date().toISOString().slice(0,10);
     const monthAgo = new Date(Date.now() - 30*86400e3).toISOString().slice(0,10);
     const { getMetaRows } = await import('../metaAdsClient.js');
-    const rows = await getMetaRows({ brand: 'COCOONCENTER', market: 'FR', from: monthAgo, to: today });
+    const rows = await getMetaRows({ brand: 'BRAND_A', market: 'FR', from: monthAgo, to: today });
     out.sdk_rows_count = rows.length;
     if (rows[0]) out.sdk_sample = rows[0];
   } catch (e) {

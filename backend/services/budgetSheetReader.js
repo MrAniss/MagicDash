@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import { getOAuth2Client } from '../auth.js';
 import { BUDGET_MARKET_MAP } from '../config/budgetMarketMap.js';
+import { isDemoMode } from './demo/demoMode.js';
+import * as __demoBudget from './demo/demoBudget.js';
 
 // Read lazily — process.env isn't populated at module-eval time because ES
 // module imports are hoisted above server.js's dotenv.config() call.
@@ -59,9 +61,10 @@ async function fetchSheetData() {
 /**
  * Get budget data for a given month
  * @param {string} yearMonth - 'YYYY-MM'
- * @returns {Object} { 'Cocooncenter': { 'FR': 45000, ... }, 'Parapharmacie Lafayette': { 'FR': 41604 } }
+ * @returns {Object} { 'Brand Alpha': { 'FR': 45000, ... }, 'Brand Gamma': { 'FR': 41604 } }
  */
 export async function getBudgetForMonth(yearMonth) {
+  if (isDemoMode()) return __demoBudget.getBudgetForMonth(yearMonth);
   const rows = await fetchSheetData();
   if (rows.length < 3) return {};
 
@@ -115,17 +118,17 @@ export async function getBudgetForMonth(yearMonth) {
   return result;
 }
 
-// ─── PCS Budget (onglet PCS_Budget) ───
+// ─── Brand B Budget (onglet Brand_B_Budget) ───
 
-const PCS_TAB = 'PCS_Budget';
-let pcsCachedData = null;
-let pcsCacheTs = 0;
+const BRAND_B_TAB = 'Brand_B_Budget';
+let brandBCachedData = null;
+let brandBCacheTs = 0;
 
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
-async function fetchPCSSheetData() {
-  if (pcsCachedData && (Date.now() - pcsCacheTs) < CACHE_TTL) {
-    return pcsCachedData;
+async function fetchBrandBSheetData() {
+  if (brandBCachedData && (Date.now() - brandBCacheTs) < CACHE_TTL) {
+    return brandBCachedData;
   }
 
   const auth = getOAuth2Client();
@@ -133,17 +136,17 @@ async function fetchPCSSheetData() {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: getBudgetSheetId(),
-    range: `${PCS_TAB}`,
+    range: `${BRAND_B_TAB}`,
   });
 
   const rows = res.data.values || [];
-  pcsCachedData = rows;
-  pcsCacheTs = Date.now();
+  brandBCachedData = rows;
+  brandBCacheTs = Date.now();
   return rows;
 }
 
 /**
- * PCS_Budget format:
+ * Brand_B_Budget format:
  *   Row 0 (line 1): "Budget marketing 2026 / TOTAL / Janvier / Février ..."
  *   Row 1 (line 2): "montant € HT / Budget / Réel / Budget / Réel ..."
  *   Row 2 (line 3): "SEA - Google / <total> / <total réel> / <jan budget> / <jan réel> / <feb budget> ..."
@@ -153,8 +156,9 @@ async function fetchPCSSheetData() {
  * We locate the Budget column by scanning row 1 (headers line 2) for the month name
  * and picking the "Budget" sub-column under it.
  */
-export async function getPCSBudgetForMonth(yearMonth) {
-  const rows = await fetchPCSSheetData();
+export async function getBrandBBudgetForMonth(yearMonth) {
+  if (isDemoMode()) return __demoBudget.getBrandBBudgetForMonth(yearMonth);
+  const rows = await fetchBrandBSheetData();
   if (rows.length < 3) return {};
 
   const [, monthStr] = yearMonth.split('-');
@@ -201,18 +205,19 @@ export async function getPCSBudgetForMonth(yearMonth) {
     const altLabel = String(alt[0] || '').trim();
     if (altLabel.includes('SEA') && altLabel.includes('Google')) {
       const value = parseEuro(alt[budgetCol]);
-      return { 'Pascal Coste Shopping': { 'FR': value } };
+      return { 'Brand Beta': { 'FR': value } };
     }
     return {};
   }
 
   const value = parseEuro(dataRow[budgetCol]);
-  return { 'Pascal Coste Shopping': { 'FR': value } };
+  return { 'Brand Beta': { 'FR': value } };
 }
 
 export function clearBudgetCache() {
+  if (isDemoMode()) return __demoBudget.clearBudgetCache();
   cachedData = null;
   cacheTs = 0;
-  pcsCachedData = null;
-  pcsCacheTs = 0;
+  brandBCachedData = null;
+  brandBCacheTs = 0;
 }

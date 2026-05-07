@@ -226,7 +226,7 @@ router.get('/price-summary', async (req, res) => {
 });
 
 // ─── GET /api/shopping/scoring ────────────────────────────
-// CC FR only — resolves the customer ID via BRANDS.COCOONCENTER (env-driven).
+// Brand A FR only — resolves the customer ID via BRANDS.BRAND_A (env-driven).
 
 const SCORING_BUCKETS = {
   'TOP_MIDDLE': { label: 'Top/Middle', color: '#00B87A', order: 1 },
@@ -262,7 +262,7 @@ router.get('/scoring', async (req, res) => {
 
     const totalSpend   = Object.values(agg).reduce((s, v) => s + v.cost, 0);
     const totalRevenue = Object.values(agg).reduce((s, v) => s + v.revenue, 0);
-    const breakeven    = POAS_BREAKEVEN['COCOONCENTER']['FR'];
+    const breakeven    = POAS_BREAKEVEN['BRAND_A']['FR'];
 
     const result = Object.entries(SCORING_BUCKETS)
       .map(([key, meta]) => {

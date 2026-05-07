@@ -8,12 +8,12 @@ import { API_URL, authFetch } from '../utils/api';
 import { useComarket } from '../contexts/ComarketContext';
 
 const BRAND_OPTIONS = [
-  { key: 'COCOONCENTER', label: 'Cocooncenter' },
-  { key: 'PASCAL_COSTE', label: 'Pascal Coste Shopping' },
-  { key: 'PARAPHARMACIE_LAFAYETTE', label: 'Parapharmacie Lafayette' },
+  { key: 'BRAND_A', label: 'Brand Alpha' },
+  { key: 'BRAND_B', label: 'Brand Beta' },
+  { key: 'BRAND_C', label: 'Brand Gamma' },
 ];
 
-const CC_MARKETS = [
+const BRAND_A_MARKETS = [
   'ALL',
   'FR',
   'UK',
@@ -28,7 +28,7 @@ const CC_MARKETS = [
   'SA',
   'Autres pays',
 ];
-const PCS_MARKETS = ['ALL', 'FR'];
+const BRAND_B_MARKETS = ['ALL', 'FR'];
 
 const COMPARE_OPTIONS = [
   { key: 'previous_month', label: 'M-1' },
@@ -37,8 +37,8 @@ const COMPARE_OPTIONS = [
 
 function getMarketsForBrand(brand) {
   const b = (brand || '').toUpperCase();
-  if (b === 'COCOONCENTER') return CC_MARKETS;
-  return PCS_MARKETS;
+  if (b === 'BRAND_A') return BRAND_A_MARKETS;
+  return BRAND_B_MARKETS;
 }
 
 async function fetchBudget(brand, market, month, compareTo, includeComarket) {
@@ -212,10 +212,10 @@ function ForecastCard({
 
 export default function BudgetPacing({ filters }) {
   const [month, setMonth] = useState(getCurrentMonth());
-  const [brand, setBrand] = useState(filters?.brand || 'COCOONCENTER');
+  const [brand, setBrand] = useState(filters?.brand || 'BRAND_A');
   const [market, setMarket] = useState('ALL');
   const [compareTo, setCompareTo] = useState(
-    () => localStorage.getItem('dhygietal_budget_compare') || 'previous_month'
+    () => localStorage.getItem('magicdash_budget_compare') || 'previous_month'
   );
   const { includeComarket } = useComarket();
 
@@ -228,7 +228,7 @@ export default function BudgetPacing({ filters }) {
 
   function handleCompareChange(val) {
     setCompareTo(val);
-    localStorage.setItem('dhygietal_budget_compare', val);
+    localStorage.setItem('magicdash_budget_compare', val);
   }
 
   const { data, isLoading } = useQuery({

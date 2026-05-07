@@ -13,7 +13,7 @@ import { getRows, getComarketRows, clearCache, clearScoringCache } from './googl
 import { generateRecommendations } from './services/recommendationEngine.js';
 import { aggregateMetrics, groupBy } from './aggregation.js';
 import { BRANDS } from './config/accounts.js';
-import { getBudgetForMonth, getPCSBudgetForMonth, clearBudgetCache } from './services/budgetSheetReader.js';
+import { getBudgetForMonth, getBrandBBudgetForMonth, clearBudgetCache } from './services/budgetSheetReader.js';
 import { AUTRES_PAYS_MARKETS } from './config/budgetMarketMap.js';
 import { clearGA4Cache, getGA4Rows, getGA4Kpis, getGA4ByCampaign } from './ga4Client.js';
 import { clearMcCache } from './services/merchantCenterClient.js';
@@ -24,6 +24,7 @@ import shoppingRouter from './routes/shopping.js';
 import reportsRouter from './routes/reports.js';
 import paidSocialRouter from './routes/paidSocial.js';
 import feedMonitorRouter from './routes/feedMonitor.js';
+import setupRouter from './routes/setup.js';
 import { initScheduler } from './services/scheduler.js';
 import { clearMetaCache } from './metaAdsClient.js';
 
@@ -49,6 +50,11 @@ app.use(express.json({ limit: '100mb' }));
 
 authRouter(app);
 userAuthRouter(app);
+
+// Setup wizard — must be mounted BEFORE any auth middleware because it runs
+// on first launch (no users, no tokens). Stays public after bootstrap so the
+// frontend can read /api/setup/status to know whether to show the wizard.
+app.use('/api/setup', setupRouter);
 
 // Toutes les routes /api/* et /auth/user-me exigent un JWT user valide.
 // Les routes /auth/* de Google OAuth (login, callback, status, logout) restent ouvertes.
@@ -531,28 +537,28 @@ app.get('/api/granularity', async (req, res) => {
 // ─── Budget (Sheet budget + Google Ads spend + forecast) ──
 app.get('/api/budget', async (req, res) => {
   try {
-    const { brand = 'Cocooncenter', market = 'ALL', month, compareTo = 'previous_month', includeComarket } = req.query;
+    const { brand = 'Brand Alpha', market = 'ALL', month, compareTo = 'previous_month', includeComarket } = req.query;
     const comarket = includeComarket === 'true';
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
     // Map brand param
-    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
-                     : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
-                     : brand === 'LASANTE' || brand === 'LaSante.net' ? 'LaSante.net'
-                     : 'Cocooncenter';
+    const brandLabel = brand === 'BRAND_C' || brand === 'Brand Gamma' ? 'Brand Gamma'
+                     : brand === 'BRAND_B' || brand === 'Brand Beta' ? 'Brand Beta'
+                     : brand === 'BRAND_D' || brand === 'Brand Delta' ? 'Brand Delta'
+                     : 'Brand Alpha';
 
-    const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
-                      : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
-                      : brandLabel === 'LaSante.net' ? 'LASANTE'
-                      : 'PASCAL_COSTE';
+    const adsBrandKey = brandLabel === 'Brand Alpha' ? 'BRAND_A'
+                      : brandLabel === 'Brand Gamma' ? 'BRAND_C'
+                      : brandLabel === 'Brand Delta' ? 'BRAND_D'
+                      : 'BRAND_B';
 
-    const isPascalCoste = adsBrandKey === 'PASCAL_COSTE';
+    const isBrandB = adsBrandKey === 'BRAND_B';
 
     // Get budgets from Sheet
     let brandBudgets = {};
-    if (isPascalCoste) {
-      const pcsBudgets = await getPCSBudgetForMonth(month);
-      brandBudgets = pcsBudgets[brandLabel] || {};
+    if (isBrandB) {
+      const brandBBudgets = await getBrandBBudgetForMonth(month);
+      brandBudgets = brandBBudgets[brandLabel] || {};
     } else {
       const budgets = await getBudgetForMonth(month);
       brandBudgets = budgets[brandLabel] || {};
@@ -738,22 +744,22 @@ app.get('/api/budget', async (req, res) => {
 // ─── Budget Recommendations ────────────────────────────
 app.get('/api/budget/recommendations', async (req, res) => {
   try {
-    const { brand = 'Cocooncenter', month, granularity = 'market' } = req.query;
+    const { brand = 'Brand Alpha', month, granularity = 'market' } = req.query;
     if (!month) return res.status(400).json({ error: 'Missing month' });
 
-    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' || brand === 'Parapharmacie Lafayette' ? 'Parapharmacie Lafayette'
-                     : brand === 'PASCAL_COSTE' || brand === 'Pascal Coste Shopping' ? 'Pascal Coste Shopping'
-                     : brand === 'LASANTE' || brand === 'LaSante.net' ? 'LaSante.net'
-                     : 'Cocooncenter';
-    const adsBrandKey = brandLabel === 'Cocooncenter' ? 'COCOONCENTER'
-                      : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
-                      : brandLabel === 'LaSante.net' ? 'LASANTE'
-                      : 'PASCAL_COSTE';
+    const brandLabel = brand === 'BRAND_C' || brand === 'Brand Gamma' ? 'Brand Gamma'
+                     : brand === 'BRAND_B' || brand === 'Brand Beta' ? 'Brand Beta'
+                     : brand === 'BRAND_D' || brand === 'Brand Delta' ? 'Brand Delta'
+                     : 'Brand Alpha';
+    const adsBrandKey = brandLabel === 'Brand Alpha' ? 'BRAND_A'
+                      : brandLabel === 'Brand Gamma' ? 'BRAND_C'
+                      : brandLabel === 'Brand Delta' ? 'BRAND_D'
+                      : 'BRAND_B';
 
     // Get pacing data for all markets (needed for budget/projection signals)
-    const isPCS = adsBrandKey === 'PASCAL_COSTE';
-    const budgets = isPCS
-      ? await getPCSBudgetForMonth(month)
+    const isBrandB = adsBrandKey === 'BRAND_B';
+    const budgets = isBrandB
+      ? await getBrandBBudgetForMonth(month)
       : await getBudgetForMonth(month);
     const brandBudgets = (budgets[brandLabel] || {});
 
@@ -824,7 +830,7 @@ app.get('/api/comarket', async (req, res) => {
     let comarketRows = await getComarketRows({ from, to });
     
     // Get total FR spend for context (always global FR)
-    const frRows = await getRows({ brand: 'COCOONCENTER', market: 'FR', from, to, includeComarket: true });
+    const frRows = await getRows({ brand: 'BRAND_A', market: 'FR', from, to, includeComarket: true });
     const totalFR = aggregateMetrics(frRows);
 
     // Comparison
@@ -1099,7 +1105,7 @@ const DAILY_CACHE_TTL = 60 * 60 * 1000; // 1h
 
 app.get('/api/budget/daily-spend', async (req, res) => {
   try {
-    const { brand = 'Cocooncenter', market = 'ALL', year, includeComarket } = req.query;
+    const { brand = 'Brand Alpha', market = 'ALL', year, includeComarket } = req.query;
     const comarket = includeComarket === 'true';
     const targetYear = parseInt(year || new Date().getFullYear(), 10);
     const cacheKey = `daily-spend|${brand}|${market}|${targetYear}|${comarket}`;
@@ -1113,28 +1119,28 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     const from = `${targetYear}-01-01`;
     const to = today.getFullYear() === targetYear ? fmtDate(today) : `${targetYear}-12-31`;
 
-    const brandLabel = brand === 'PARAPHARMACIE_LAFAYETTE' ? 'Parapharmacie Lafayette'
-                     : brand === 'COCOONCENTER'            ? 'Cocooncenter'
-                     : brand === 'PASCAL_COSTE'            ? 'Pascal Coste Shopping'
-                     : brand === 'LASANTE'                 ? 'LaSante.net'
+    const brandLabel = brand === 'BRAND_C' ? 'Brand Gamma'
+                     : brand === 'BRAND_A' ? 'Brand Alpha'
+                     : brand === 'BRAND_B' ? 'Brand Beta'
+                     : brand === 'BRAND_D' ? 'Brand Delta'
                      : brand;
-    const adsBrandKey = brandLabel === 'Cocooncenter'            ? 'COCOONCENTER'
-                      : brandLabel === 'Parapharmacie Lafayette' ? 'PARAPHARMACIE_LAFAYETTE'
-                      : brandLabel === 'LaSante.net'             ? 'LASANTE'
-                      : 'PASCAL_COSTE';
-    const isPCS = adsBrandKey === 'PASCAL_COSTE';
+    const adsBrandKey = brandLabel === 'Brand Alpha' ? 'BRAND_A'
+                      : brandLabel === 'Brand Gamma' ? 'BRAND_C'
+                      : brandLabel === 'Brand Delta' ? 'BRAND_D'
+                      : 'BRAND_B';
+    const isBrandB = adsBrandKey === 'BRAND_B';
 
-    const isCC = adsBrandKey === 'COCOONCENTER';
+    const isBrandA = adsBrandKey === 'BRAND_A';
     const isParaLafMarket = market === 'France Para Laf';
     const marketFilter = (market && market !== 'ALL' && !isParaLafMarket) ? market : undefined;
 
-    // Fetch CC rows + Para Laf rows in parallel when CC brand
+    // Fetch Brand A rows + Brand C rows in parallel when Brand A
     const [rows, paraLafRows] = await Promise.all([
       isParaLafMarket
         ? Promise.resolve([])
         : getRows({ brand: adsBrandKey, market: marketFilter, from, to, includeComarket: comarket }),
-      (isCC && (market === 'ALL' || isParaLafMarket))
-        ? getRows({ brand: 'PARAPHARMACIE_LAFAYETTE', from, to, includeComarket: comarket })
+      (isBrandA && (market === 'ALL' || isParaLafMarket))
+        ? getRows({ brand: 'BRAND_C', from, to, includeComarket: comarket })
         : Promise.resolve([]),
     ]);
 
@@ -1158,9 +1164,9 @@ app.get('/api/budget/daily-spend', async (req, res) => {
     const budgetsByMonth = {};
     const paraLafBudgetsByMonth = {};
     await Promise.all(months.map(async m => {
-      const budgets = isPCS ? await getPCSBudgetForMonth(m) : await getBudgetForMonth(m);
+      const budgets = isBrandB ? await getBrandBBudgetForMonth(m) : await getBudgetForMonth(m);
       budgetsByMonth[m] = budgets[brandLabel] || {};
-      if (isCC) paraLafBudgetsByMonth[m] = budgets['Parapharmacie Lafayette'] || {};
+      if (isBrandA) paraLafBudgetsByMonth[m] = budgets['Brand Gamma'] || {};
     }));
 
     // Build result array
@@ -1336,7 +1342,7 @@ function aggregateGA4Metrics(rows) {
 app.get('/health', (_req, res) => res.json({ status: 'ok', source: DATA_SOURCE }));
 
 const server = app.listen(PORT, () => {
-  console.log(`SEA Dashboard API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
+  console.log(`MagicDash API running on http://localhost:${PORT} [source: ${DATA_SOURCE}] v2`);
   initCacheWarmer();
   initScheduler();
 });

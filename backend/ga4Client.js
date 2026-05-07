@@ -3,20 +3,25 @@ import { GA4_PROPERTIES, BRAND_KEY_TO_PROPERTY, resolvePropertyId } from './conf
 import { GA4_STREAMS, setGA4Streams } from './config/ga4Streams.js';
 import { getFunnelEvents } from './config/ga4FunnelEvents.js';
 import { r2 } from './dateUtils.js';
+import { isDemoMode } from './services/demo/demoMode.js';
+import * as __demoGa4 from './services/demo/demoGa4.js';
 
 // ─── Cache ─────────────────────────────────────────────
 const cache = new Map();
 const CACHE_TTL = 15 * 60 * 1000;
 
 export function clearGA4Cache() {
+  if (isDemoMode()) return __demoGa4.clearGA4Cache();
   cache.clear();
 }
 
 export function getGA4Streams() {
+  if (isDemoMode()) return __demoGa4.getGA4Streams();
   return GA4_STREAMS;
 }
 
-export async function getGA4Hostnames({ brand = 'COCOONCENTER', from, to }) {
+export async function getGA4Hostnames({ brand = 'BRAND_A', from, to }) {
+  if (isDemoMode()) return __demoGa4.getGA4Hostnames({ brand, from, to });
   const properties = resolvePropertyIds(brand, 'ALL');
   const result = {};
   for (const [bKey, propId] of properties) {
@@ -48,6 +53,7 @@ function setCache(key, data) {
 // ─── Fetch streams via Admin API ───────────────────────
 
 export async function fetchAndWriteStreams() {
+  if (isDemoMode()) return __demoGa4.fetchAndWriteStreams();
   if (Object.keys(GA4_STREAMS).length > 0) return GA4_STREAMS;
 
   const accessToken = await getValidAccessToken();
@@ -114,7 +120,7 @@ function extractMarketFromStreamName(displayName, brandName) {
     if (patterns.some(p => name.includes(p))) return market;
   }
 
-  if (brandName === 'Pascal Coste Shopping' || brandName === 'Parapharmacie Lafayette' || brandName === 'LaSante.net') {
+  if (brandName === 'Brand Beta' || brandName === 'Brand Gamma' || brandName === 'Brand Delta') {
     return 'FR';
   }
 
@@ -186,44 +192,44 @@ function resolvePropertyIds(brand, market = 'ALL') {
 
 // Hostnames réels vérifiés via /api/ga4/hostnames
 const MARKET_HOSTNAMES = {
-  COCOONCENTER: {
-    FR: 'www.cocooncenter.com',      // site principal FR = .com
-    UK: 'www.cocooncenter.co.uk',
-    DE: 'www.cocooncenter.de',
-    ES: 'www.cocooncenter.es',
-    IT: 'www.cocooncenter.it',
-    BE: 'www.cocooncenter.be',
-    PL: 'www.cocooncenter.pl',
-    PT: 'www.cocooncenter.pt',
-    AT: 'www.cocooncenter.at',
-    LU: 'www.cocooncenter.lu',
-    FI: 'www.cocooncenter.fi',
-    NL: 'www.cocooncenter.nl',
-    RO: 'www.cocooncenter.ro',
-    SE: 'www.cocooncenter.se',
+  BRAND_A: {
+    FR: 'www.brand-a.example',      // site principal FR
+    UK: 'www.brand-a.example.co.uk',
+    DE: 'www.brand-a.example.de',
+    ES: 'www.brand-a.example.es',
+    IT: 'www.brand-a.example.it',
+    BE: 'www.brand-a.example.be',
+    PL: 'www.brand-a.example.pl',
+    PT: 'www.brand-a.example.pt',
+    AT: 'www.brand-a.example.at',
+    LU: 'www.brand-a.example.lu',
+    FI: 'www.brand-a.example.fi',
+    NL: 'www.brand-a.example.nl',
+    RO: 'www.brand-a.example.ro',
+    SE: 'www.brand-a.example.se',
   },
-  PASCAL_COSTE:            { FR: 'www.pascal-coste.com' },
-  PARAPHARMACIE_LAFAYETTE: { FR: 'www.parapharmacielafayette.com' },
-  // LASANTE: no hostname filter — single dedicated GA4 property, no need to filter.
+  BRAND_B: { FR: 'www.brand-b.example' },
+  BRAND_C: { FR: 'www.brand-c.example' },
+  // BRAND_D: no hostname filter — single dedicated GA4 property, no need to filter.
 };
 
 // Marchés sans domaine propre → filtrage hostname partagé + pays
-// Ces marchés utilisent www.cocooncenter.co.uk mais ont leur propre pays dans GA4
+// Ces marchés utilisent le domaine .co.uk mais ont leur propre pays dans GA4
 const MARKET_SHARED = {
-  COCOONCENTER: {
-    NO: { hostname: 'www.cocooncenter.co.uk', country: 'Norway'       },
-    IE: { hostname: 'www.cocooncenter.co.uk', country: 'Ireland'      },
-    SA: { hostname: 'www.cocooncenter.co.uk', country: 'Saudi Arabia' },
-    CA: { hostname: 'www.cocooncenter.co.uk', country: 'Canada'       },
-    AU: { hostname: 'www.cocooncenter.co.uk', country: 'Australia'    },
-    US: { hostname: 'www.cocooncenter.co.uk', country: 'United States'},
+  BRAND_A: {
+    NO: { hostname: 'www.brand-a.example.co.uk', country: 'Norway'       },
+    IE: { hostname: 'www.brand-a.example.co.uk', country: 'Ireland'      },
+    SA: { hostname: 'www.brand-a.example.co.uk', country: 'Saudi Arabia' },
+    CA: { hostname: 'www.brand-a.example.co.uk', country: 'Canada'       },
+    AU: { hostname: 'www.brand-a.example.co.uk', country: 'Australia'    },
+    US: { hostname: 'www.brand-a.example.co.uk', country: 'United States'},
   },
 };
 
 // Garde pour compatibilité resolveFilterTag
 const MARKET_COUNTRIES = {
-  COCOONCENTER: Object.fromEntries(
-    Object.entries(MARKET_SHARED.COCOONCENTER).map(([k, v]) => [k, v.country])
+  BRAND_A: Object.fromEntries(
+    Object.entries(MARKET_SHARED.BRAND_A).map(([k, v]) => [k, v.country])
   ),
 };
 
@@ -320,6 +326,7 @@ function combineFilters(f1, f2) {
 }
 
 export async function getGA4Rows({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  if (isDemoMode()) return __demoGa4.getGA4Rows({ brand, market, from, to, sourceMedium });
   const filterTag = resolveFilterTag(brand, market);
   const cacheKey  = `ga4_rows_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
@@ -371,6 +378,7 @@ export async function getGA4Rows({ brand = 'ALL', market = 'ALL', from, to, sour
 }
 
 export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  if (isDemoMode()) return __demoGa4.getGA4Kpis({ brand, market, from, to, sourceMedium });
   const filterTag  = resolveFilterTag(brand, market);
   const cacheKey   = `ga4_kpis_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
@@ -403,6 +411,7 @@ export async function getGA4Kpis({ brand = 'ALL', market = 'ALL', from, to, sour
 }
 
 export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, granularity = 'day', sourceMedium }) {
+  if (isDemoMode()) return __demoGa4.getGA4Trend({ brand, market, from, to, granularity, sourceMedium });
   const filterTag = resolveFilterTag(brand, market);
   const cacheKey  = `ga4_trend_${brand}_${market}_${filterTag}_${from}_${to}_${granularity}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
@@ -456,6 +465,7 @@ export async function getGA4Trend({ brand = 'ALL', market = 'ALL', from, to, gra
 }
 
 export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, compFrom, compTo, sourceMedium }) {
+  if (isDemoMode()) return __demoGa4.getGA4Channels({ brand, market, from, to, compFrom, compTo, sourceMedium });
   const filterTag = resolveFilterTag(brand, market);
   const cacheKey  = `ga4_channels_${brand}_${market}_${filterTag}_${from}_${to}_${compFrom || ''}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
@@ -556,6 +566,7 @@ export async function getGA4Channels({ brand = 'ALL', market = 'ALL', from, to, 
 // `google / cpc` (or whatever sourceMedium is passed) so we only count
 // SEA-attributed sessions.
 export async function getGA4ByCampaign({ brand = 'ALL', market = 'ALL', from, to, sourceMedium }) {
+  if (isDemoMode()) return __demoGa4.getGA4ByCampaign({ brand, market, from, to, sourceMedium });
   const filterTag = resolveFilterTag(brand, market);
   const cacheKey  = `ga4_by_campaign_${brand}_${market}_${filterTag}_${from}_${to}_${sourceMedium || ''}`;
   const cached = getFromCache(cacheKey);
@@ -598,6 +609,7 @@ export async function getGA4ByCampaign({ brand = 'ALL', market = 'ALL', from, to
 // ─── GET /api/ga4/bounce-rate-ytd ─────────────────────
 
 export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', sourceMedium, granularity = 'week' }) {
+  if (isDemoMode()) return __demoGa4.getGA4BounceRateYtd({ brand, market, sourceMedium, granularity });
   const year = new Date().getFullYear();
   const from = `${year}-01-01`;
   const to   = new Date().toISOString().slice(0, 10);
@@ -700,6 +712,7 @@ export async function getGA4BounceRateYtd({ brand = 'ALL', market = 'ALL', sourc
 // ─── GET /api/ga4/cvr-aov-ytd ──────────────────────────
 
 export async function getGA4CvrAovYtd({ brand = 'ALL', market = 'ALL', sourceMedium, granularity = 'week' }) {
+  if (isDemoMode()) return __demoGa4.getGA4CvrAovYtd({ brand, market, sourceMedium, granularity });
   const year = new Date().getFullYear();
   const from = `${year}-01-01`;
   const to   = new Date().toISOString().slice(0, 10);
@@ -847,6 +860,7 @@ function makePeriodId(dateStr, gran) {
 }
 
 export async function getGA4FunnelYtd({ brand = 'ALL', market = 'ALL', granularity = 'week' }) {
+  if (isDemoMode()) return __demoGa4.getGA4FunnelYtd({ brand, market, granularity });
   const year = new Date().getFullYear();
   const from = `${year}-01-01`;
   const to   = new Date().toISOString().slice(0, 10);
