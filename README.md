@@ -28,7 +28,7 @@ Dashboard de pilotage **acquisition multi-marques / multi-marchés**. Centralise
 
 ## Aperçu
 
-Le dashboard expose 4 vues principales, configurables par marque et marché :
+Le dashboard est protégé par un **login email/mot de passe** (utilisateurs gérés en local via un script CLI) puis expose 4 vues principales, configurables par marque et marché :
 
 ### Paid Search (4 sous-onglets)
 - **Vue d'ensemble** — KPIs (spend, revenue, ROAS, conv., CVR, AOV…), tendance YTD, granularité jour/semaine/mois, performance par marché, détail campagnes, bilan hebdo automatique. Toggle **Source data business : Google Ads ↔ GA4**.
@@ -59,6 +59,7 @@ Snapshots quotidiens du flux Merchant Center pour détecter les changements d'at
 - `facebook-nodejs-business-sdk` — Meta Marketing API (Paid Social)
 - `googleapis` — Sheets, Merchant Center, OAuth
 - `better-sqlite3` — DB locale (audit campagnes, snapshots Feed Monitor)
+- `bcryptjs` + `jsonwebtoken` — auth utilisateur (login dashboard)
 - `node-cron` — scheduler (snapshot quotidien Feed Monitor)
 - `nodemon` (dev) — auto-reload sur changement de fichier
 - `pm2` (prod / Windows détaché) — gestion de process avec restart auto
@@ -112,13 +113,29 @@ cp backend/.env.example backend/.env
 
 Édite `backend/.env` (cf. sections credentials ci-dessous).
 
-### 4. Lancer en mode dev
+### 4. Créer un compte utilisateur (login dashboard)
+
+Le dashboard est protégé par un login email/mot de passe (séparé de l'OAuth Google). Au moins **un utilisateur** doit exister avant de pouvoir se connecter.
+
+```bash
+cd backend
+node scripts/addUser.js <email> <password> [nom]
+# Ex : node scripts/addUser.js admin@example.com "MonMdpFort" "Admin"
+```
+
+Cela crée / met à jour `backend/users.json` (gitignoré). Le mot de passe est hashé avec bcrypt avant stockage.
+
+> Tu peux relancer la même commande pour ajouter d'autres comptes ou mettre à jour un mot de passe existant.
+
+### 5. Lancer en mode dev
 
 ```bash
 npm run dev:all
 ```
 
-Ouvre [http://localhost:5173](http://localhost:5173) et clique **« Connecter Google »** pour le premier login OAuth.
+Ouvre [http://localhost:5173](http://localhost:5173) :
+1. **Login** avec l'email/password créé à l'étape 4
+2. **Connecter Google** dans le header pour le premier OAuth (récupération des tokens API)
 
 ---
 
@@ -185,6 +202,16 @@ MC_ID_<MARQUE>_<MARCHE>=123456789
 
 ID de ton Google Sheet de budgets (depuis l'URL : `/spreadsheets/d/<ID>/edit`)
 → `BUDGET_SHEET_ID`
+
+### 8. JWT_SECRET (login dashboard)
+
+Clé aléatoire ≥ 16 caractères pour signer les tokens de session. Génère-en une avec :
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Copie le résultat dans `JWT_SECRET=` de ton `.env`. **Ne partage jamais cette clé** : avec elle, on peut forger des tokens de connexion valides.
 
 ### Scopes OAuth demandés au runtime
 
@@ -318,6 +345,7 @@ dashproject/
 ├── backend/
 │   ├── server.js                 # Express app + routes inline (kpis, markets, campaigns, granularity, budget, comarket, trend/ytd)
 │   ├── auth.js                   # OAuth Google + isAuthenticated()
+│   ├── userAuth.js               # Login utilisateur (bcrypt + JWT) + middleware requireUser
 │   ├── googleAdsClient.js        # Client Google Ads + cache + scoring shopping
 │   ├── ga4Client.js              # Client GA4 + cache
 │   ├── metaAdsClient.js          # Client Meta Marketing API + cache
@@ -340,6 +368,8 @@ dashproject/
 │   │   ├── feedSnapshotService.js   # Snapshots quotidiens du flux MC
 │   │   ├── scheduler.js             # Cron node-cron (8h15 Paris)
 │   │   └── cacheWarmer.js           # Pré-chauffe les caches au démarrage
+│   ├── scripts/
+│   │   └── addUser.js            # CLI pour créer / mettre à jour un user
 │   ├── config/                   # Mappings env → marques/marchés (cf. section dédiée)
 │   ├── database/
 │   │   ├── schema.sql
@@ -347,6 +377,7 @@ dashproject/
 │   ├── data/                     # SQLite files (gitignoré)
 │   ├── logs/                     # Logs PM2 (gitignoré)
 │   ├── tokens.json               # OAuth tokens (gitignoré)
+│   ├── users.json                # Comptes utilisateurs hashés bcrypt (gitignoré)
 │   └── .env                      # Credentials (gitignoré)
 │
 ├── frontend/
@@ -356,10 +387,15 @@ dashproject/
 │   ├── .prettierrc.json
 │   ├── src/
 │   │   ├── App.jsx               # Routeur de vues (4 onglets + sub-tabs)
+│   │   ├── main.jsx              # Bootstrap React + AuthProvider
 │   │   ├── index.css
-│   │   ├── components/           # Vues + composants partagés
-│   │   ├── hooks/useAdsData.js   # React Query hooks
+│   │   ├── components/
+│   │   │   ├── LoginScreen.jsx   # Écran de login (email/mdp)
+│   │   │   └── ...               # Vues + composants partagés
 │   │   ├── contexts/
+│   │   │   ├── AuthContext.jsx   # State auth + login/logout
+│   │   │   └── ComarketContext.jsx
+│   │   ├── hooks/useAdsData.js   # React Query hooks
 │   │   └── utils/
 │   │       ├── api.js
 │   │       ├── chartColors.js    # Palette charts centralisée
@@ -398,6 +434,13 @@ Toutes les routes nécessitent OAuth (`isAuthenticated()`) sauf indication contr
 - `/api/feed-monitor/*` — `run`, `run-all`, `status`, `summary`, `diffs`, `attribute-changes`, `runs`, `compare-import`, `attributes`
 - `/api/recommendations` — Recommandations campagnes scorées
 - `/api/reports/weekly-summary` — Résumé hebdo (utilisé par `WeeklyPerformanceSummary`)
+
+**Auth**
+- `POST /auth/user-login` — Login email/mdp → renvoie un JWT (durée 7j) — public
+- `GET /auth/user-me` — Vérifie le JWT en cours et renvoie l'utilisateur — `Authorization: Bearer <token>`
+- `GET /auth/login` — Lance le flow OAuth Google (récupération tokens API)
+- `GET /auth/callback` — Callback OAuth Google
+- `GET /auth/status` — Statut OAuth Google (token présent / valide ?)
 
 ---
 
@@ -460,8 +503,11 @@ Au démarrage du backend, pré-chauffe les caches Google Ads et GA4 sur la péri
 
 | Symptôme | Solution |
 |---|---|
-| `Not authenticated` au chargement | Refresh token expiré. Cliquer **« Connecter Google »** dans le header. |
-| `tokens.json` manquant | Normal au premier lancement. Créé après le premier OAuth. |
+| Écran de login bloqué / "Identifiants invalides" | Aucun user en base. Lancer `node backend/scripts/addUser.js <email> <password>`. |
+| `JWT_SECRET missing or too short` au démarrage backend | Variable manquante ou < 16 chars dans `.env`. Générer avec `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. |
+| Déconnecté du dashboard sans raison | JWT expiré (durée 7 jours). Re-login simplement. |
+| `Not authenticated` au chargement | Refresh token Google expiré. Cliquer **« Connecter Google »** dans le header. |
+| `tokens.json` manquant | Normal au premier lancement. Créé après le premier OAuth Google. |
 | `redirect_uri_mismatch` au login Google | URI dans Cloud Console incorrecte. Doit être exactement `http://localhost:3001/auth/callback`. |
 | `Quota exceeded` (Google Ads / GA4 / Meta) | Trop d'appels API. Attendre, ou augmenter `staleTime` dans `useAdsData.js`. |
 | Données vides sur un marché | Vérifier que `GOOGLE_ADS_ID_<MARQUE>_<MARCHE>` est défini dans `.env`. |
