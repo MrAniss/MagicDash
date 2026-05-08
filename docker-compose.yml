@@ -1,0 +1,79 @@
+# MagicDash — homeserver deployment.
+#
+# Brings up the backend, the frontend (nginx) and Watchtower for auto-update.
+# Plug into Nginx Proxy Manager (NPM) by joining the same docker network.
+#
+# Quick start on the homeserver:
+#   1. git clone https://github.com/MrAniss/MagicDash.git magicdash
+#   2. cd magicdash
+#   3. ./scripts/homeserver-bootstrap.sh   # creates persistent files
+#   4. docker compose up -d
+#
+# Then in NPM, add a Proxy Host:
+#   Domain:           magicdash.anissbelmouaz.com
+#   Forward Hostname: magicdash-frontend
+#   Forward Port:     80
+#   Block Common Exploits: ON
+#   Websockets Support:    ON
+#   SSL → Request a new SSL certificate (Let's Encrypt)
+
+services:
+  backend:
+    image: ghcr.io/mraniss/magicdash-backend:latest
+    container_name: magicdash-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    volumes:
+      # Persistent state on the host so an image refresh doesn't wipe it.
+      # `homeserver-bootstrap.sh` creates the files/dirs so Docker doesn't
+      # create them as directories on first launch.
+      - ./backend/.env:/app/backend/.env
+      - ./backend/users.json:/app/backend/users.json
+      - ./backend/tokens.json:/app/backend/tokens.json
+      - ./backend/data:/app/backend/data
+      - ./backend/logs:/app/backend/logs
+    networks:
+      - magicdash
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    image: ghcr.io/mraniss/magicdash-frontend:latest
+    container_name: magicdash-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - magicdash
+      # NPM lives on this network — change the name below if your NPM
+      # network is called something else (run: docker network ls).
+      - npm_default
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: magicdash-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Only update containers that opted in via the watchtower.enable label,
+    # so the rest of the homeserver (Plex, Minecraft) stays untouched.
+    command: --label-enable --interval 300 --cleanup
+    networks:
+      - magicdash
+
+networks:
+  magicdash:
+  # NPM's network. Declared as `external: true` because it's owned by the
+  # NPM stack — we just join it. Adjust the name if yours differs.
+  npm_default:
+    external: true
