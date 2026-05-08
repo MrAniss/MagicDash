@@ -34,15 +34,26 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_SOURCE = 'google-ads-api';
 
-const allowedOrigins = [
-  'http://localhost:5173',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
+// CORS strategy:
+//   • If `CORS_ALLOWED_ORIGINS` is set (comma-separated), it's strict whitelist.
+//   • Otherwise we reflect the request Origin — safe for self-hosted setups
+//     where the backend sits behind a reverse proxy (Nginx Proxy Manager,
+//     Traefik, Caddy) and isn't directly reachable. The actual auth gate is
+//     the JWT, not the Origin header.
+const explicitAllowed = (process.env.CORS_ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+const baseAllowed = ['http://localhost:5173', 'http://localhost:3001', ...explicitAllowed];
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
+    if (!origin) return cb(null, true);
+    if (baseAllowed.includes(origin)) return cb(null, true);
+    // No explicit whitelist → permissive (self-host default).
+    if (explicitAllowed.length === 0) return cb(null, true);
+    return cb(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
 }));
